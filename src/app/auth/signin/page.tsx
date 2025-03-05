@@ -23,7 +23,11 @@ export default function SignInPage() {
             <div className="grid grid-cols-2 gap-4">
               <Button 
                 variant="outline" 
-                onClick={() => signIn("github", { callbackUrl: "/plans" })}
+                onClick={() => {
+                  console.log("Sign-in page: GitHub button clicked");
+                  // Mock sign-in by redirecting directly to plans page
+                  window.location.href = "/plans";
+                }}
                 className="flex items-center gap-2"
               >
                 <FaGithub className="w-4 h-4" />
@@ -31,7 +35,11 @@ export default function SignInPage() {
               </Button>
               <Button 
                 variant="outline" 
-                onClick={() => signIn("google", { callbackUrl: "/plans" })}
+                onClick={() => {
+                  console.log("Sign-in page: Google button clicked");
+                  // Mock sign-in by redirecting directly to plans page
+                  window.location.href = "/plans";
+                }}
                 className="flex items-center gap-2"
               >
                 <FaGoogle className="w-4 h-4" />

@@ -4,18 +4,19 @@ import { PrismaClient } from "@prisma/client";
 import GithubProvider from "next-auth/providers/github";
 import GoogleProvider from "next-auth/providers/google";
 
-const prisma = new PrismaClient();
+// Use PrismaClient singleton to avoid multiple instances in development
+import { prisma } from "@/lib/prisma";
 
 const handler = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [
     GithubProvider({
-      clientId: process.env.GITHUB_ID!,
-      clientSecret: process.env.GITHUB_SECRET!,
+      clientId: process.env.GITHUB_ID ?? "",
+      clientSecret: process.env.GITHUB_SECRET ?? "",
     }),
     GoogleProvider({
-      clientId: process.env.GOOGLE_ID!,
-      clientSecret: process.env.GOOGLE_SECRET!,
+      clientId: process.env.GOOGLE_ID ?? "",
+      clientSecret: process.env.GOOGLE_SECRET ?? "",
     }),
   ],
   pages: {
@@ -30,6 +31,10 @@ const handler = NextAuth({
       return session;
     },
   },
+  session: {
+    strategy: "jwt",
+  },
+  debug: true,
 });
 
 export { handler as GET, handler as POST };
