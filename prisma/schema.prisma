@@ -1,0 +1,198 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Next Auth Models
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  plans         Plan[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Application Models
+model Course {
+  id              String @id @default(cuid())
+  courseCode      String
+  catalogNumber   String
+  title           String
+  description     String? @db.Text
+  units           Float
+  prerequisites   String? @db.Text
+  corequisites    String? @db.Text
+  antirequisites  String? @db.Text
+  
+  // For course planning
+  planCourses     PlanCourse[]
+  
+  // For degree requirements
+  degreeRequirementCourses DegreeRequirementCourse[]
+
+  @@unique([courseCode, catalogNumber])
+}
+
+model Faculty {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String? @db.Text
+  programs    Program[]
+}
+
+model Program {
+  id          String @id @default(cuid())
+  name        String
+  description String? @db.Text
+  facultyId   String
+  faculty     Faculty @relation(fields: [facultyId], references: [id])
+  degrees     Degree[]
+
+  @@unique([name, facultyId])
+}
+
+model Degree {
+  id              String @id @default(cuid())
+  name            String
+  description     String? @db.Text
+  programId       String
+  program         Program @relation(fields: [programId], references: [id])
+  requirementSets DegreeRequirementSet[]
+  
+  // For student plans
+  planDegrees     PlanDegree[]
+
+  @@unique([name, programId])
+}
+
+model DegreeRequirementSet {
+  id            String @id @default(cuid())
+  name          String
+  description   String? @db.Text
+  degreeId      String
+  degree        Degree @relation(fields: [degreeId], references: [id])
+  requirements  DegreeRequirement[]
+  
+  @@unique([name, degreeId])
+}
+
+model DegreeRequirement {
+  id                  String @id @default(cuid())
+  name                String
+  description         String? @db.Text
+  requirementSetId    String
+  requirementSet      DegreeRequirementSet @relation(fields: [requirementSetId], references: [id])
+  type                String  // "COURSE", "COURSE_LIST", "UNITS", "CUSTOM"
+  unitsRequired       Float?
+  coursesRequired     Int?
+  levelRestriction    String? // e.g., "300-400" for 300 or 400 level courses
+  courseCodeRestriction String? // e.g., "MATH, CS" for only MATH or CS courses
+  courses             DegreeRequirementCourse[]
+  
+  // For tracking requirement status in plans
+  planRequirements    PlanRequirement[]
+}
+
+model DegreeRequirementCourse {
+  id              String @id @default(cuid())
+  requirementId   String
+  requirement     DegreeRequirement @relation(fields: [requirementId], references: [id])
+  courseId        String
+  course          Course @relation(fields: [courseId], references: [id])
+  isRequired      Boolean @default(true) // false for "one of these courses" lists
+  
+  @@unique([requirementId, courseId])
+}
+
+model Plan {
+  id          String @id @default(cuid())
+  name        String
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  created     DateTime @default(now())
+  updated     DateTime @updatedAt
+  courses     PlanCourse[]
+  degrees     PlanDegree[]
+}
+
+model PlanCourse {
+  id          String @id @default(cuid())
+  planId      String
+  plan        Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  courseId    String
+  course      Course @relation(fields: [courseId], references: [id])
+  term        String? // e.g., "Fall 2023"
+  status      String // "PLANNED", "IN_PROGRESS", "COMPLETED"
+  grade       String?
+  
+  @@unique([planId, courseId])
+}
+
+model PlanDegree {
+  id              String @id @default(cuid())
+  planId          String
+  plan            Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  degreeId        String
+  degree          Degree @relation(fields: [degreeId], references: [id])
+  type            String // "MAJOR", "MINOR", "SPECIALIZATION", etc.
+  requirements    PlanRequirement[]
+  
+  @@unique([planId, degreeId, type])
+}
+
+model PlanRequirement {
+  id                String @id @default(cuid())
+  planDegreeId      String
+  planDegree        PlanDegree @relation(fields: [planDegreeId], references: [id], onDelete: Cascade)
+  requirementId     String
+  requirement       DegreeRequirement @relation(fields: [requirementId], references: [id])
+  status            String // "NOT_STARTED", "IN_PROGRESS", "COMPLETED"
+  progress          Float? // Percentage or units completed
+  
+  @@unique([planDegreeId, requirementId])
+}
