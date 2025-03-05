@@ -313,41 +313,70 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         .course-item-dropped {
           animation: dropAnimation 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
         }
+
+        .term-header {
+          font-size: 1.1rem;
+          font-weight: 600;
+          color: var(--foreground);
+          background-color: var(--primary);
+          color: var(--primary-foreground);
+          padding: 0.5rem 1rem;
+          border-radius: 0.375rem 0.375rem 0 0;
+        }
+
+        .terms-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+          gap: 1rem;
+          width: 100%;
+        }
+
+        @media (min-width: 1024px) {
+          .terms-grid {
+            grid-template-columns: repeat(4, 1fr);
+          }
+        }
       `}</style>
       
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-4 bg-muted/50 rounded-lg">
-        <div>
-          <h3 className="font-medium mb-2">Co-op Sequence</h3>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(coopSequenceMap).map(([key, label]) => (
-              <Button 
-                key={key} 
-                variant={sequence === key ? "default" : "outline"} 
-                size="sm"
-                onClick={() => setSequence(key as CoopSequenceType)}
-              >
-                {label}
-              </Button>
-            ))}
+      <div className="border rounded-lg p-4 bg-muted/30 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+          <div className="flex items-center">
+            <Button 
+              size="lg" 
+              className="gap-2 shadow-sm font-medium"
+              onClick={() => {}}
+            >
+              <PlusIcon className="h-4 w-4" />
+              Add Program
+            </Button>
+            <span className="ml-2 text-sm text-muted-foreground">
+              Add a major, minor, option, or specialization
+            </span>
           </div>
-        </div>
-        <div>
-          <h3 className="font-medium mb-2">Program Information</h3>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm">Select Faculty</Button>
-            <Button variant="outline" size="sm">Add Major</Button>
-            <Button variant="outline" size="sm">Add Minor</Button>
-            <Button variant="outline" size="sm">Add Option</Button>
+          
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Co-op Sequence:</span>
+            <select 
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              value={sequence}
+              onChange={(e) => setSequence(e.target.value as CoopSequenceType)}
+            >
+              {Object.entries(coopSequenceMap).map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
       
-      <div className="overflow-x-auto pb-4">
-        <div className="flex gap-4 min-w-max">
+      <div className="w-full mb-4 pt-2">
+        <div className="terms-grid">
           {defaultTerms.map((term) => (
             <div 
               key={term}
-              className="w-72 flex-shrink-0 border rounded-md bg-card term-column transition-all duration-200 ease-in-out" 
+              className="border rounded-md bg-card term-column shadow-sm" 
               onDrop={(e) => handleDrop(e, term)} 
               onDragOver={(e) => {
                 e.preventDefault();
@@ -360,10 +389,10 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                 e.currentTarget.classList.remove('term-column-drag-over');
               }}
             >
-              <div className="p-3 border-b bg-muted/50 font-medium flex justify-between items-center">
+              <div className="term-header flex justify-between items-center">
                 <span>{term}</span>
                 <Link href={`/plans/${planId}/add-course?term=${term}`}>
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
+                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
                     <PlusIcon className="h-4 w-4" />
                   </Button>
                 </Link>
@@ -438,7 +467,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       
       {/* Display unscheduled courses if any */}
       {coursesByTerm['Unscheduled'] && coursesByTerm['Unscheduled'].length > 0 && (
-        <div className="border rounded-md term-column" 
+        <div className="border rounded-md term-column w-full mt-8 shadow-sm" 
              onDrop={(e) => handleDrop(e, 'Unscheduled')}
              onDragOver={(e) => {
                e.preventDefault();
@@ -450,8 +479,13 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
              onDragExit={(e) => {
                e.currentTarget.classList.remove('term-column-drag-over');
              }}>
-          <div className="p-3 border-b bg-muted/50 font-medium">
-            Unscheduled Courses
+          <div className="term-header flex justify-between items-center">
+            <span>Unscheduled Courses</span>
+            <Link href={`/plans/${planId}/add-course?term=Unscheduled`}>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
+                <PlusIcon className="h-4 w-4" />
+              </Button>
+            </Link>
           </div>
           <div className="divide-y">
             {coursesByTerm['Unscheduled'].map((course, index) => (
