@@ -167,6 +167,7 @@ model PlanCourse {
   courseId    String
   course      Course @relation(fields: [courseId], references: [id])
   term        String? // e.g., "Fall 2023"
+  termIndex   Int?   // For identifying unique terms (especially COOP terms)
   status      String // "PLANNED", "IN_PROGRESS", "COMPLETED"
   grade       String?
   

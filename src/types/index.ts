@@ -103,6 +103,7 @@ export interface PlanCourse {
   courseId: string;
   course: Course;
   term?: string;
+  termIndex?: number;
   status: CourseStatus;
   grade?: string;
 }
@@ -110,6 +111,7 @@ export interface PlanCourse {
 // Mock course with term and status for client components
 export interface CourseWithStatus extends Course {
   term?: string;
+  termIndex?: number;
   status: CourseStatus;
   grade?: string;
   justDropped?: boolean;

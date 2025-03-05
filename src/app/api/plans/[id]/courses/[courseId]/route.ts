@@ -76,6 +76,7 @@ export async function PUT(
       },
       data: {
         term: body.term !== undefined ? body.term : existingPlanCourse.term,
+        termIndex: body.termIndex !== undefined ? body.termIndex : existingPlanCourse.termIndex,
         status: (body.status as any) || existingPlanCourse.status,
         grade: body.grade !== undefined ? body.grade : existingPlanCourse.grade,
       },

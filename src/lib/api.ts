@@ -110,6 +110,7 @@ export async function addCourseToPlan(
   data: { 
     courseId: string; 
     term?: string; 
+    termIndex?: number;
     status?: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED'; 
     grade?: string 
   }
@@ -128,6 +129,7 @@ export async function updatePlanCourse(
   courseId: string,
   data: {
     term?: string;
+    termIndex?: number;
     status?: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
     grade?: string;
   }

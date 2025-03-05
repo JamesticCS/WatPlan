@@ -94,6 +94,7 @@ export async function POST(
         planId: params.id,
         courseId: body.courseId,
         term: body.term || null,
+        termIndex: body.termIndex || null,
         status: (body.status as any) || 'PLANNED',
         grade: body.grade || null,
       },
