@@ -30,16 +30,51 @@
   100% { transform: translateY(0px); }
 }
 
+@keyframes rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes rotateReverse {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(-360deg); }
+}
+
+@keyframes wave {
+  0% { transform: translateX(-50%) translateY(0) rotate(0); }
+  50% { transform: translateX(-50%) translateY(-5px) rotate(2deg); }
+  100% { transform: translateX(-50%) translateY(0) rotate(0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+@keyframes flow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 .animate-fadeIn { animation: fadeIn 1s ease-out; }
 .animate-slideUp { animation: slideUp 0.7s ease-out; }
 .animate-slideInRight { animation: slideInRight 0.7s ease-out; }
 .animate-pulse-slow { animation: pulse 3s infinite ease-in-out; }
 .animate-float { animation: float 4s infinite ease-in-out; }
+.animate-rotate { animation: rotate 20s linear infinite; }
+.animate-rotate-reverse { animation: rotateReverse 15s linear infinite; }
+.animate-wave { animation: wave 5s ease-in-out infinite; }
+.animate-shimmer { animation: shimmer 3s linear infinite; }
+.animate-flow { animation: flow 8s ease infinite; }
 .animate-delay-100 { animation-delay: 100ms; }
 .animate-delay-200 { animation-delay: 200ms; }
 .animate-delay-300 { animation-delay: 300ms; }
 .animate-delay-400 { animation-delay: 400ms; }
 .animate-delay-500 { animation-delay: 500ms; }
+.animate-delay-1000 { animation-delay: 1000ms; }
+.animate-delay-2000 { animation-delay: 2000ms; }
+.animate-delay-3000 { animation-delay: 3000ms; }
 
 @layer base {
   :root {
@@ -96,4 +131,23 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Drag and drop animations */
+.course-item {
+  transition: all 0.2s ease;
+}
+
+.course-item-dragging {
+  opacity: 0.6;
+  transform: scale(0.95);
+  cursor: grabbing;
+}
+
+.term-column {
+  transition: background-color 0.2s ease-in-out;
+}
+
+.term-column-drag-over {
+  background-color: hsl(var(--primary) / 0.1);
 }

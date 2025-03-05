@@ -12,22 +12,82 @@ export default function Home() {
     <div className="flex flex-col min-h-screen">
       <Navbar />
       <main className="flex-1">
-        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48 bg-gradient-to-b from-amber-50 to-white dark:from-black dark:to-background overflow-hidden">
-          <div className="container px-4 md:px-6 relative">
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute -right-10 top-10 w-72 h-72 bg-primary/10 rounded-full mix-blend-multiply filter blur-3xl animate-float dark:mix-blend-soft-light"></div>
-              <div className="absolute -left-10 bottom-10 w-72 h-72 bg-primary/20 rounded-full mix-blend-multiply filter blur-3xl animate-float animation-delay-2000 dark:mix-blend-soft-light"></div>
+        <section className="w-full py-12 md:py-24 lg:py-32 xl:py-48 bg-gradient-to-b from-gray-900 to-black dark:from-black dark:to-gray-900 overflow-hidden relative">
+          {/* Dynamic Animated Background */}
+          <div className="absolute inset-0 overflow-hidden">
+            {/* Honeycomb/Grid Pattern */}
+            <div className="absolute inset-0 opacity-10 dark:opacity-20 bg-[radial-gradient(circle_500px_at_50%_50%,#ffc000,transparent)]"></div>
+            
+            {/* Interactive particles */}
+            <div className="absolute inset-0" style={{ background: 'url("data:image/svg+xml,%3Csvg width=\'20\' height=\'20\' viewBox=\'0 0 20 20\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'%23ffcc00\' fill-opacity=\'0.05\' fill-rule=\'evenodd\'%3E%3Ccircle cx=\'3\' cy=\'3\' r=\'2\'/%3E%3C/g%3E%3C/svg%3E")' }}></div>
+            
+            {/* Animated hexagons */}
+            <div className="absolute w-[600px] h-[600px] -right-64 -top-64 opacity-30">
+              <div className="absolute inset-0 bg-primary/20 rounded-full mix-blend-screen filter blur-3xl animate-rotate"></div>
+            </div>
+            <div className="absolute w-[500px] h-[500px] -left-48 -bottom-32 opacity-20">
+              <div className="absolute inset-0 bg-primary/20 rounded-full mix-blend-screen filter blur-3xl animate-rotate-reverse"></div>
             </div>
             
+            {/* Gold beam light effects */}
+            <div className="absolute top-1/4 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent animate-flow" style={{ backgroundSize: '200% 100%' }}></div>
+            <div className="absolute top-3/4 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent animate-flow animate-delay-1000" style={{ backgroundSize: '200% 100%' }}></div>
+            
+            {/* Moving gold particles */}
+            <div className="absolute left-10 top-1/4 w-2 h-2 rounded-full bg-primary/70 animate-pulse-slow"></div>
+            <div className="absolute right-10 top-1/3 w-3 h-3 rounded-full bg-primary/60 animate-pulse-slow animate-delay-500"></div>
+            <div className="absolute left-1/3 bottom-1/4 w-2 h-2 rounded-full bg-primary/70 animate-pulse-slow animate-delay-1000"></div>
+            <div className="absolute right-1/4 bottom-1/3 w-1 h-1 rounded-full bg-primary/80 animate-pulse-slow animate-delay-1500"></div>
+            
+            {/* UWaterloo logo hint in background */}
+            <div className="absolute left-1/2 top-3/4 w-32 h-32 bg-primary/5 -translate-x-1/2 rounded-full mix-blend-overlay animate-pulse-slow"></div>
+            
+            {/* Dynamic geometric shapes */}
+            <div className="absolute inset-0 z-0 opacity-20">
+              {/* Animated geometric pattern */}
+              <svg className="absolute left-0 top-0 w-full h-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <radialGradient id="grad1" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">
+                    <stop offset="0%" style={{ stopColor: '#ffcc00', stopOpacity: 0.3 }} />
+                    <stop offset="100%" style={{ stopColor: '#ffcc00', stopOpacity: 0 }} />
+                  </radialGradient>
+                </defs>
+                {/* Animated network lines */}
+                <g className="animate-pulse-slow" style={{ opacity: 0.15 }}>
+                  <line x1="0" y1="20" x2="100" y2="80" stroke="#ffcc00" strokeWidth="0.1" />
+                  <line x1="0" y1="80" x2="100" y2="20" stroke="#ffcc00" strokeWidth="0.1" />
+                  <line x1="20" y1="0" x2="80" y2="100" stroke="#ffcc00" strokeWidth="0.1" />
+                  <line x1="80" y1="0" x2="20" y2="100" stroke="#ffcc00" strokeWidth="0.1" />
+                  <line x1="50" y1="0" x2="50" y2="100" stroke="#ffcc00" strokeWidth="0.1" />
+                  <line x1="0" y1="50" x2="100" y2="50" stroke="#ffcc00" strokeWidth="0.1" />
+                </g>
+                {/* Hexagonal pattern hint - UWaterloo Engineering inspired */}
+                <g className="animate-rotate" style={{ transformOrigin: 'center', opacity: 0.1 }}>
+                  <polygon points="50,10 90,30 90,70 50,90 10,70 10,30" stroke="#ffcc00" strokeWidth="0.2" fill="none" />
+                  <polygon points="50,20 80,35 80,65 50,80 20,65 20,35" stroke="#ffcc00" strokeWidth="0.1" fill="none" />
+                  <polygon points="50,30 70,40 70,60 50,70 30,60 30,40" stroke="#ffcc00" strokeWidth="0.1" fill="none" />
+                </g>
+              </svg>
+              
+              {/* Interactive particles with varying speeds */}
+              <div className="absolute w-[1px] h-[1px] top-1/4 left-1/4 bg-primary animate-pulse-slow" style={{ boxShadow: '0 0 3px 1px rgba(255,204,0,0.5)' }}></div>
+              <div className="absolute w-[1px] h-[1px] top-3/4 left-1/2 bg-primary animate-pulse-slow animate-delay-200" style={{ boxShadow: '0 0 3px 1px rgba(255,204,0,0.5)' }}></div>
+              <div className="absolute w-[1px] h-[1px] top-1/2 left-3/4 bg-primary animate-pulse-slow animate-delay-500" style={{ boxShadow: '0 0 2px 1px rgba(255,204,0,0.5)' }}></div>
+              <div className="absolute w-[1px] h-[1px] top-1/4 right-1/4 bg-primary animate-pulse-slow animate-delay-300" style={{ boxShadow: '0 0 2px 1px rgba(255,204,0,0.5)' }}></div>
+              <div className="absolute w-[1px] h-[1px] bottom-1/4 right-1/2 bg-primary animate-pulse-slow animate-delay-100" style={{ boxShadow: '0 0 3px 1px rgba(255,204,0,0.5)' }}></div>
+            </div>
+          </div>
+          
+          <div className="container px-4 md:px-6 relative">
             <div className="flex flex-col items-center space-y-8 text-center relative z-10">
-              <div className="space-y-6 animate-fadeIn">
+              <div className="space-y-6 animate-fadeIn backdrop-blur-sm py-8 px-6 rounded-2xl bg-black/30 border border-white/5 shadow-[0_0_15px_rgba(255,204,0,0.07)]">
                 <h1 className="text-5xl font-extrabold tracking-tighter sm:text-6xl md:text-7xl lg:text-8xl bg-clip-text text-transparent bg-gradient-to-r from-primary via-amber-500 to-primary">
                   WatPlan
                 </h1>
-                <p className="text-xl md:text-2xl font-semibold text-secondary dark:text-primary/90 animate-slideUp animate-delay-100">
+                <p className="text-xl md:text-2xl font-semibold text-amber-100 animate-slideUp animate-delay-100">
                   Your Ultimate UWaterloo Degree Planning Tool
                 </p>
-                <p className="mx-auto max-w-[800px] text-gray-700 md:text-xl dark:text-amber-100/80 animate-slideUp animate-delay-200">
+                <p className="mx-auto max-w-[800px] text-amber-100/80 md:text-xl animate-slideUp animate-delay-200">
                   Plan your academic journey with confidence. Track your progress, explore courses, and ensure you meet all your degree requirements in one place.
                 </p>
               </div>

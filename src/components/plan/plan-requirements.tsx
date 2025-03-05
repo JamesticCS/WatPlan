@@ -2,12 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 
-type Requirement = {
-  id: string;
-  name: string;
-  status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
-  progress: number;
-};
+import { Requirement } from "@/types";
 
 interface PlanRequirementsProps {
   requirements: Requirement[];

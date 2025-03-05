@@ -7,12 +7,15 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { createPlan } from "@/lib/api";
 
 export default function NewPlanPage() {
   const [planName, setPlanName] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+  
   const router = useRouter();
   const { toast } = useToast();
-
+  
   const handleCreatePlan = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -25,14 +28,32 @@ export default function NewPlanPage() {
       return;
     }
     
-    // This would be an API call to create a plan in a real app
-    toast({
-      title: "Success",
-      description: "Plan created successfully",
-    });
-    
-    // Redirect to plans page
-    router.push("/plans");
+    try {
+      setIsCreating(true);
+      
+      // Call the API to create a new plan
+      const response = await createPlan({ name: planName });
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      toast({
+        title: "Success",
+        description: "Plan created successfully",
+      });
+      
+      // Redirect to the plans listing page
+      router.push("/plans");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create plan",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
   
   return (
@@ -60,20 +81,6 @@ export default function NewPlanPage() {
                     onChange={(e) => setPlanName(e.target.value)}
                   />
                 </div>
-                
-                <div className="space-y-4">
-                  <h3 className="text-sm font-medium">Select a Faculty</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {["Mathematics", "Engineering", "Science", "Arts", "Health", "Environment"].map((faculty) => (
-                      <div 
-                        key={faculty}
-                        className="border rounded-lg p-4 cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
-                      >
-                        {faculty}
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </CardContent>
               <CardFooter className="flex justify-between">
                 <Button 
@@ -83,7 +90,9 @@ export default function NewPlanPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit">Create Plan</Button>
+                <Button type="submit" disabled={isCreating}>
+                  {isCreating ? "Creating..." : "Create Plan"}
+                </Button>
               </CardFooter>
             </form>
           </Card>

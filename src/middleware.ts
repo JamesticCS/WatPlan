@@ -5,18 +5,18 @@ import { NextRequest, NextResponse } from "next/server";
 const publicPaths = ["/", "/auth/signin"];
 
 export default async function middleware(req: NextRequest) {
-  // For testing purposes, skip authentication checks
-  // and allow access to all routes
-  return NextResponse.next();
-  
-  /* Original authentication logic (commented out for testing)
   const path = req.nextUrl.pathname;
   
   // Check if the path is public or auth-related
   const isPublicPath = 
     publicPaths.some((publicPath) => path === publicPath) || 
-    path.startsWith("/api/") ||
     path.startsWith("/auth/");
+
+  // For API routes other than auth, we'll let the API handlers check auth
+  // This allows API routes to handle their own authentication
+  if (path.startsWith("/api/") && !path.startsWith("/api/auth")) {
+    return NextResponse.next();
+  }
 
   // Get the session token
   const token = await getToken({ req });
@@ -34,7 +34,6 @@ export default async function middleware(req: NextRequest) {
 
   // Allow authenticated users to access protected routes
   return NextResponse.next();
-  */
 }
 
 // Configure which paths should be processed by the middleware

@@ -64,6 +64,10 @@ The easiest way to deploy this app is to use the [Vercel Platform](https://verce
 
 Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## API Documentation
+
+For a comprehensive list of API endpoints, see [API.md](API.md)
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
