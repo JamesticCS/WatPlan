@@ -77,7 +77,7 @@ export function PlanAcademicCalendar({ planId, currentCalendarYear, onCalendarUp
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
+        <Button variant="outline" size="sm" className="w-full" aria-label="Select Academic Calendar">
           <Calendar className="mr-2 h-4 w-4" />
           {currentCalendarYear ? `Calendar: ${currentCalendarYear}` : "Select Academic Calendar"}
         </Button>
@@ -90,7 +90,7 @@ export function PlanAcademicCalendar({ planId, currentCalendarYear, onCalendarUp
         <div className="py-4">
           <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-4 bg-muted p-3 rounded-lg">
             <Info className="h-4 w-4" />
-            <p>Select which academic calendar year your program should follow. This determines which degree requirements apply to your plan.</p>
+            <p>Select which academic calendar year your program(s) should follow. This determines which degree requirements apply to your plan.</p>
           </div>
           
           <div className="space-y-2">

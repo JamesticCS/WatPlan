@@ -117,14 +117,6 @@ export async function PUT(
     // Get request body
     const body = await request.json();
     
-    // Validate required fields
-    if (!body.name) {
-      return NextResponse.json(
-        { error: 'Plan name is required' },
-        { status: 400 }
-      );
-    }
-
     // Find the plan and check if it belongs to the user
     const existingPlan = await prisma.plan.findUnique({
       where: {
@@ -146,14 +138,21 @@ export async function PUT(
       );
     }
 
+    // Prepare update data
+    const updateData: any = {};
+    if (body.name) {
+      updateData.name = body.name;
+    }
+    if (body.academicCalendarYear) {
+      updateData.academicCalendarYear = body.academicCalendarYear;
+    }
+
     // Update the plan
     const updatedPlan = await prisma.plan.update({
       where: {
         id: params.id,
       },
-      data: {
-        name: body.name,
-      },
+      data: updateData,
     });
 
     return NextResponse.json({ plan: updatedPlan });

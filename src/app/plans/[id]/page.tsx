@@ -11,11 +11,11 @@ import { PlanCourseList } from "@/components/plan/plan-course-list";
 import { PlanRequirements } from "@/components/plan/plan-requirements";
 import { PlanAddProgram } from "@/components/plan/plan-add-program";
 import { PlanAcademicCalendar } from "@/components/plan/plan-academic-calendar";
-import { CourseWithStatus, Plan, PlanCourse, Requirement } from "@/types";
+import { CourseWithStatus, Plan, PlanCourse, Requirement, DegreeType } from "@/types";
 import { useEffect, useState } from "react";
 import { getPlan, removeDegreeFromPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { X, AlertTriangle } from "lucide-react";
+import { X, AlertTriangle, Calendar, GraduationCap } from "lucide-react";
 
 export default function PlanDetailPage() {
   const params = useParams();
@@ -77,6 +77,18 @@ export default function PlanDetailPage() {
       month: 'long',
       day: 'numeric'
     });
+  };
+  
+  // Get degree type display text
+  const getDegreeTypeDisplay = (type: DegreeType) => {
+    switch (type) {
+      case 'MAJOR': return 'Major';
+      case 'MINOR': return 'Minor';
+      case 'SPECIALIZATION': return 'Specialization';
+      case 'OPTION': return 'Option';
+      case 'JOINT': return 'Joint';
+      default: return type;
+    }
   };
   
   // Calculate average grade
@@ -261,7 +273,31 @@ export default function PlanDetailPage() {
                         <CardTitle>Degree Requirements</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <PlanRequirements requirements={mockRequirements} />
+                        {(!plan.academicCalendarYear || !plan.degrees || plan.degrees.length === 0) ? (
+                          <div className="py-6 text-center">
+                            <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-amber-500" />
+                            <h3 className="text-base font-medium mb-2">Requirements not available</h3>
+                            <p className="text-sm text-muted-foreground mb-4 max-w-md mx-auto">
+                              To view your degree requirements, you need to:
+                            </p>
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                              {!plan.academicCalendarYear && (
+                                <Button variant="outline" className="inline-flex items-center" onClick={() => document.querySelector('button[aria-label="Select Academic Calendar"]')?.click()}>
+                                  <Calendar className="mr-2 h-4 w-4" />
+                                  Select Academic Calendar
+                                </Button>
+                              )}
+                              {(!plan.degrees || plan.degrees.length === 0) && (
+                                <Button variant="outline" className="inline-flex items-center" onClick={() => document.querySelector('button[aria-label="Add Program"]')?.click()}>
+                                  <GraduationCap className="mr-2 h-4 w-4" />
+                                  Add a Program
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <PlanRequirements requirements={mockRequirements} />
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -275,18 +311,34 @@ export default function PlanDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div>
-                        <div className="flex justify-between mb-1 text-sm">
-                          <span>Degree Completion</span>
-                          <span>{calculateProgress()}%</span>
+                      {plan.degrees && plan.degrees.length > 0 ? (
+                        <div className="space-y-2">
+                          {plan.degrees.map((degree) => (
+                            <div key={degree.id}>
+                              <div className="flex justify-between mb-1 text-sm">
+                                <span>{degree.degree.program?.name || degree.degree.name} ({getDegreeTypeDisplay(degree.type)})</span>
+                                <span>{calculateProgress()}%</span>
+                              </div>
+                              <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
+                                <div 
+                                  className="h-full bg-primary rounded-full"
+                                  style={{ width: `${calculateProgress()}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
-                          <div 
-                            className="h-full bg-primary rounded-full"
-                            style={{ width: `${calculateProgress()}%` }}
-                          ></div>
+                      ) : (
+                        <div className="py-2 px-3 bg-muted rounded-md text-sm">
+                          <div className="flex items-center mb-1">
+                            <AlertTriangle className="h-4 w-4 mr-1 text-amber-500" />
+                            <span className="font-medium">No degrees added</span>
+                          </div>
+                          <p className="text-muted-foreground text-xs">
+                            Add a program to see degree completion progress
+                          </p>
                         </div>
-                      </div>
+                      )}
                       
                       <div className="border-t pt-4 mt-4">
                         <h3 className="text-sm font-medium mb-3">Academic Calendar</h3>
@@ -318,7 +370,7 @@ export default function PlanDetailPage() {
                           }}
                         />
                         <div className="mt-2 text-xs text-muted-foreground">
-                          Select which academic calendar year your program should follow. This determines which degree requirements apply to your plan.
+                          Select which academic calendar year your program(s) should follow. This determines which degree requirements apply to your plan.
                         </div>
                       </div>
 
@@ -335,7 +387,7 @@ export default function PlanDetailPage() {
                                 <div className="flex justify-between items-start mb-2">
                                   <div>
                                     <div className="font-medium">
-                                      {degree.degree.name}
+                                      {degree.degree.program?.name || degree.degree.name}
                                     </div>
                                     <div className="text-sm text-muted-foreground flex items-center gap-1">
                                       <span className="capitalize">{degree.type.toLowerCase()}</span>
@@ -351,7 +403,7 @@ export default function PlanDetailPage() {
                                     className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50"
                                     onClick={async () => {
                                       // Ask for confirmation
-                                      if (!confirm(`Are you sure you want to remove ${degree.degree.name} from your plan?`)) {
+                                      if (!confirm(`Are you sure you want to remove ${degree.degree.program?.name || degree.degree.name} from your plan?`)) {
                                         return;
                                       }
                                       
@@ -402,7 +454,7 @@ export default function PlanDetailPage() {
                                           
                                           toast({
                                             title: "Program removed",
-                                            description: `Removed ${degree.degree.name} from your plan`
+                                            description: `Removed ${degree.degree.program?.name || degree.degree.name} from your plan`
                                           });
                                         }, 300);
                                       } catch (error) {
@@ -416,12 +468,6 @@ export default function PlanDetailPage() {
                                   >
                                     <X className="h-4 w-4" />
                                   </button>
-                                </div>
-                                <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
-                                  <div 
-                                    className="h-full bg-primary rounded-full"
-                                    style={{ width: `${calculateProgress()}%` }}
-                                  ></div>
                                 </div>
                               </div>
                             ))}
