@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { PencilIcon, XIcon, PlusIcon, AlertTriangleIcon } from "lucide-react";
+import { XIcon, PlusIcon, AlertTriangleIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -257,7 +257,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       } else {
         // Success toast (optional)
         const termDisplay = targetTerm === "COOP" 
-          ? `Co-op Work Term ${activeTerms.slice(0, parseInt(targetTermIndex)).filter(t => t === "COOP").length + 1}` 
+          ? `Work Term ${activeTerms.slice(0, parseInt(targetTermIndex)).filter(t => t === "COOP").length + 1}` 
           : targetTerm;
         
         toast({
@@ -483,8 +483,8 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
           cursor: grabbing;
         }
         
-        /* Fix for Safari */
-        .course-item * {
+        /* Fix for Safari - but exclude action buttons */
+        .course-item > *:not(.remove-course-btn):not(button) {
           pointer-events: none;
         }
         
@@ -555,6 +555,73 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         
         .course-item-dropped {
           animation: dropAnimation 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+        
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(-5px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-in-out forwards;
+        }
+        
+        /* Remove course button hover effect */
+        .remove-course-btn {
+          cursor: pointer !important;
+          z-index: 10 !important;
+          position: relative !important;
+          pointer-events: auto !important;
+        }
+        
+        .remove-course-btn:hover {
+          background-color: rgba(239, 68, 68, 0.1) !important;
+        }
+        
+        .remove-course-btn:hover svg {
+          color: rgb(239, 68, 68) !important;
+        }
+        
+        .remove-course-btn:active {
+          background-color: rgba(239, 68, 68, 0.2) !important;
+        }
+        
+        /* Override the parent pointer-events rule for remove buttons */
+        .course-item .remove-course-btn * {
+          pointer-events: auto !important;
+        }
+        
+        /* Animation for course removal */
+        @keyframes removeAnimation {
+          0% {
+            opacity: 1;
+            transform: scale(1);
+            max-height: 200px;
+          }
+          70% {
+            opacity: 0;
+            transform: scale(0.95);
+            max-height: 200px;
+          }
+          100% {
+            opacity: 0;
+            transform: scale(0.9);
+            max-height: 0;
+            margin: 0;
+            padding: 0;
+            border-width: 0;
+          }
+        }
+        
+        .course-item-removing {
+          animation: removeAnimation 0.4s ease-in-out forwards !important;
+          overflow: hidden;
         }
 
         .term-header {
@@ -647,10 +714,17 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
               }}
             >
               <div className="term-header flex justify-between items-center">
-                <span>{term === "COOP" ? 
-                  `Co-op Work Term ${activeTerms.slice(0, index).filter(t => t === "COOP").length + 1}` : 
-                  term}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span>{term === "COOP" ? 
+                    `Work Term ${activeTerms.slice(0, index).filter(t => t === "COOP").length + 1}` : 
+                    term}
+                  </span>
+                  {coursesByTerm[id]?.length > 0 && (
+                    <span className="text-sm font-medium py-0.5 px-2 rounded-md bg-emerald-500/20 text-emerald-700 animate-fadeIn">
+                      {coursesByTerm[id].reduce((sum, course) => sum + (parseFloat(course.units) || 0), 0).toFixed(1)} total units
+                    </span>
+                  )}
+                </div>
                 <Link href={`/plans/${planId}/add-course?term=${id}`}>
                   <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
                     <PlusIcon className="h-4 w-4" />
@@ -661,7 +735,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                 {coursesByTerm[id]?.map((course, courseIndex) => (
                   <div 
                     key={`${course.id}-${id}-${courseIndex}`} 
-                    className={`p-3 hover:bg-muted/50 transition-colors course-item ${course.justDropped ? 'course-item-dropped' : ''}`}
+                    className={`p-3 hover:bg-muted/50 transition-colors course-item ${course.justDropped ? 'course-item-dropped' : ''} ${course.isRemoving ? 'course-item-removing' : ''}`}
                     draggable 
                     onDragStart={(e) => {
                       handleDragStart(e, course);
@@ -726,37 +800,49 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                         {course.grade && <span className="ml-2">Grade: {course.grade}</span>}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <PencilIcon className="h-3 w-3" />
-                        </Button>
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="h-7 w-7 cursor-pointer" 
+                          className="h-7 w-7 remove-course-btn"
                           onClick={async (e) => {
                             e.stopPropagation();
                             e.preventDefault(); // Prevent any unexpected behavior
+                            
                             try {
                               // Store course info before removing for use in toast
                               const courseCode = course.courseCode;
                               const catalogNumber = course.catalogNumber;
                               const courseId = course.id;
                               
-                              // Remove from local state immediately for responsive UI
-                              setCourses(prevCourses => prevCourses.filter(c => c.id !== courseId));
+                              // Flag the course for animation first
+                              setCourses(prevCourses => 
+                                prevCourses.map(c => 
+                                  c.id === courseId 
+                                    ? { ...c, isRemoving: true } 
+                                    : c
+                                )
+                              );
                               
-                              // Then call API to completely remove the course from the plan
-                              const response = await removeCourseFromPlan(planId, courseId);
-                              if (response.error) {
-                                // If API fails, add the course back
-                                setCourses(prevCourses => [...prevCourses, course]);
-                                throw new Error(response.error);
-                              }
+                              // We rely on the class-based animation instead of inline style
                               
-                              toast({
-                                title: "Course removed",
-                                description: `Removed ${courseCode} ${catalogNumber} from your plan`,
-                              });
+                              // Wait for animation to play before removing from state
+                              setTimeout(async () => {
+                                // Remove from local state
+                                setCourses(prevCourses => prevCourses.filter(c => c.id !== courseId));
+                                
+                                // Call API to completely remove the course from the plan
+                                const response = await removeCourseFromPlan(planId, courseId);
+                                if (response.error) {
+                                  // If API fails, add the course back
+                                  setCourses(prevCourses => [...prevCourses, course]);
+                                  throw new Error(response.error);
+                                }
+                                
+                                toast({
+                                  title: "Course removed",
+                                  description: `Removed ${courseCode} ${catalogNumber} from your plan`,
+                                });
+                              }, 300); // Slightly shorter than animation duration
                             } catch (error) {
                               toast({
                                 title: "Error",
@@ -766,7 +852,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                             }
                           }}
                         >
-                          <XIcon className="h-3 w-3" />
+                          <XIcon className="h-3 w-3 text-gray-500 hover:text-red-500 transition-colors" />
                         </Button>
                       </div>
                     </div>
@@ -788,33 +874,35 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         </div>
       </div>
       
-      {/* Display unscheduled courses if any */}
-      {coursesByTerm['Unscheduled'] && coursesByTerm['Unscheduled'].length > 0 && (
-        <div className="border rounded-md term-column w-full max-w-full mt-8 shadow-sm" 
-             onDrop={(e) => handleDrop(e, 'Unscheduled')}
-             onDragOver={(e) => {
-               e.preventDefault();
-               e.currentTarget.classList.add('term-column-drag-over');
-             }}
-             onDragLeave={(e) => {
-               e.currentTarget.classList.remove('term-column-drag-over');
-             }}
-             onDragExit={(e) => {
-               e.currentTarget.classList.remove('term-column-drag-over');
-             }}>
-          <div className="term-header flex justify-between items-center">
-            <span>Unscheduled Courses</span>
-            <Link href={`/plans/${planId}/add-course?term=Unscheduled`}>
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
-                <PlusIcon className="h-4 w-4" />
-              </Button>
-            </Link>
+      {/* Always display course backlog */}
+      <div className="border rounded-md term-column w-full max-w-full mt-8 shadow-sm" 
+           onDrop={(e) => handleDrop(e, 'Unscheduled')}
+           onDragOver={(e) => {
+             e.preventDefault();
+             e.currentTarget.classList.add('term-column-drag-over');
+           }}
+           onDragLeave={(e) => {
+             e.currentTarget.classList.remove('term-column-drag-over');
+           }}
+           onDragExit={(e) => {
+             e.currentTarget.classList.remove('term-column-drag-over');
+           }}>
+        <div className="term-header flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <span>Course Backlog</span>
           </div>
-          <div className="divide-y">
-            {coursesByTerm['Unscheduled'].map((course, index) => (
+          <Link href={`/plans/${planId}/add-course?term=Unscheduled`}>
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
+              <PlusIcon className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+        <div className="divide-y">
+          {coursesByTerm['Unscheduled']?.length > 0 ? (
+            coursesByTerm['Unscheduled'].map((course, index) => (
               <div 
                 key={`${course.id}-Unscheduled-${index}`} 
-                className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-muted/50 transition-colors course-item ${course.justDropped ? 'course-item-dropped' : ''}`}
+                className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-muted/50 transition-colors course-item ${course.justDropped ? 'course-item-dropped' : ''} ${course.isRemoving ? 'course-item-removing' : ''}`}
                 draggable 
                 onDragStart={(e) => {
                   handleDragStart(e, course);
@@ -878,13 +966,10 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                  <Button variant="ghost" size="icon">
-                    <PencilIcon className="h-4 w-4" />
-                  </Button>
                   <Button 
                     variant="ghost" 
                     size="icon"
-                    className="cursor-pointer"
+                    className="remove-course-btn"
                     onClick={async (e) => {
                       e.stopPropagation();
                       e.preventDefault(); // Prevent any unexpected behavior
@@ -894,21 +979,35 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                         const catalogNumber = course.catalogNumber;
                         const courseId = course.id;
                         
-                        // Remove from local state immediately for responsive UI
-                        setCourses(prevCourses => prevCourses.filter(c => c.id !== courseId));
+                        // Flag the course for animation first
+                        setCourses(prevCourses => 
+                          prevCourses.map(c => 
+                            c.id === courseId 
+                              ? { ...c, isRemoving: true } 
+                              : c
+                          )
+                        );
                         
-                        // Then call API to completely remove the course from the plan
-                        const response = await removeCourseFromPlan(planId, courseId);
-                        if (response.error) {
-                          // If API fails, add the course back
-                          setCourses(prevCourses => [...prevCourses, course]);
-                          throw new Error(response.error);
-                        }
+                        // We rely on the class-based animation instead of inline style
                         
-                        toast({
-                          title: "Course removed",
-                          description: `Removed ${courseCode} ${catalogNumber} from your plan`,
-                        });
+                        // Wait for animation to play before removing from state
+                        setTimeout(async () => {
+                          // Remove from local state
+                          setCourses(prevCourses => prevCourses.filter(c => c.id !== courseId));
+                          
+                          // Call API to completely remove the course from the plan
+                          const response = await removeCourseFromPlan(planId, courseId);
+                          if (response.error) {
+                            // If API fails, add the course back
+                            setCourses(prevCourses => [...prevCourses, course]);
+                            throw new Error(response.error);
+                          }
+                          
+                          toast({
+                            title: "Course removed",
+                            description: `Removed ${courseCode} ${catalogNumber} from your plan`,
+                          });
+                        }, 300); // Slightly shorter than animation duration
                       } catch (error) {
                         toast({
                           title: "Error",
@@ -918,14 +1017,23 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                       }
                     }}
                   >
-                    <XIcon className="h-4 w-4" />
+                    <XIcon className="h-4 w-4 text-gray-500 hover:text-red-500 transition-colors" />
                   </Button>
                 </div>
               </div>
-            ))}
-          </div>
+            ))
+          ) : (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              <p>Drag courses here to save for later</p>
+              <Link href={`/plans/${planId}/add-course?term=Unscheduled`}>
+                <Button variant="ghost" size="sm" className="mt-2">
+                  Add a course
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Confirmation Dialog */}
       <Dialog
