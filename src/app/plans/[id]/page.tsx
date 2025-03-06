@@ -9,10 +9,13 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { PlanCourseList } from "@/components/plan/plan-course-list";
 import { PlanRequirements } from "@/components/plan/plan-requirements";
+import { PlanAddProgram } from "@/components/plan/plan-add-program";
+import { PlanAcademicCalendar } from "@/components/plan/plan-academic-calendar";
 import { CourseWithStatus, Plan, PlanCourse, Requirement } from "@/types";
 import { useEffect, useState } from "react";
-import { getPlan } from "@/lib/api";
+import { getPlan, removeDegreeFromPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { X, AlertTriangle } from "lucide-react";
 
 export default function PlanDetailPage() {
   const params = useParams();
@@ -151,6 +154,48 @@ export default function PlanDetailPage() {
   
   return (
     <div className="flex flex-col min-h-screen">
+      <style jsx global>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-in-out forwards;
+        }
+        
+        @keyframes removeAnimation {
+          0% {
+            opacity: 1;
+            transform: scale(1);
+            max-height: 200px;
+          }
+          70% {
+            opacity: 0;
+            transform: scale(0.95);
+            max-height: 200px;
+          }
+          100% {
+            opacity: 0;
+            transform: scale(0.9);
+            max-height: 0;
+            margin: 0;
+            padding: 0;
+            border-width: 0;
+          }
+        }
+        
+        .program-removing {
+          animation: removeAnimation 0.4s ease-in-out forwards !important;
+          overflow: hidden;
+        }
+      `}</style>
       <Navbar />
       <div className="container py-6">
         {isLoading ? (
@@ -244,28 +289,178 @@ export default function PlanDetailPage() {
                       </div>
                       
                       <div className="border-t pt-4 mt-4">
+                        <h3 className="text-sm font-medium mb-3">Academic Calendar</h3>
+                        <PlanAcademicCalendar 
+                          planId={planId} 
+                          currentCalendarYear={plan.academicCalendarYear}
+                          onCalendarUpdated={() => {
+                            // Refresh plan data
+                            const fetchPlan = async () => {
+                              setIsLoading(true);
+                              const response = await getPlan(planId);
+                              setIsLoading(false);
+                              
+                              if (response.error) {
+                                toast({
+                                  title: "Error",
+                                  description: `Failed to load plan: ${response.error}`,
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              
+                              if (response.data) {
+                                setPlan(response.data.plan);
+                              }
+                            };
+                            
+                            fetchPlan();
+                          }}
+                        />
+                        <div className="mt-2 text-xs text-muted-foreground">
+                          Select which academic calendar year your program should follow. This determines which degree requirements apply to your plan.
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4 mt-4">
                         <h3 className="text-sm font-medium mb-3">Programs</h3>
                         {plan.degrees && plan.degrees.length > 0 ? (
-                          plan.degrees.map((degree) => (
-                            <div key={degree.id} className="mb-3">
-                              <div className="flex justify-between mb-1 text-sm">
-                                <span>{degree.degree.name} ({degree.type})</span>
-                                <span>-</span>
+                          <div className="space-y-3">
+                            {plan.degrees.map((degree, index) => (
+                              <div 
+                                key={degree.id} 
+                                className={`p-3 border rounded-md ${degree.isRemoving ? 'program-removing' : 'animate-fadeIn'}`}
+                                style={{ animationDelay: `${index * 50}ms` }}
+                              >
+                                <div className="flex justify-between items-start mb-2">
+                                  <div>
+                                    <div className="font-medium">
+                                      {degree.degree.name}
+                                    </div>
+                                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                      <span className="capitalize">{degree.type.toLowerCase()}</span>
+                                      {degree.degree.program?.faculty && (
+                                        <>
+                                          <span className="text-gray-400">•</span>
+                                          <span>{degree.degree.program.faculty.name}</span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button
+                                    className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50"
+                                    onClick={async () => {
+                                      // Ask for confirmation
+                                      if (!confirm(`Are you sure you want to remove ${degree.degree.name} from your plan?`)) {
+                                        return;
+                                      }
+                                      
+                                      try {
+                                        // Flag for animation
+                                        setPlan(prev => {
+                                          if (!prev) return null;
+                                          return {
+                                            ...prev,
+                                            degrees: prev.degrees.map(d => 
+                                              d.id === degree.id 
+                                                ? { ...d, isRemoving: true } 
+                                                : d
+                                            )
+                                          };
+                                        });
+                                        
+                                        // Wait for animation to complete
+                                        setTimeout(async () => {
+                                          // Remove the program locally first for better UX
+                                          setPlan(prev => {
+                                            if (!prev) return null;
+                                            return {
+                                              ...prev,
+                                              degrees: prev.degrees.filter(d => d.id !== degree.id)
+                                            };
+                                          });
+                                          
+                                          // Then call API
+                                          const response = await removeDegreeFromPlan(planId, degree.id);
+                                          
+                                          if (response.error) {
+                                            // If API call fails, add the program back
+                                            setPlan(prev => {
+                                              if (!prev) return null;
+                                              const updatedDegrees = [...prev.degrees];
+                                              if (!updatedDegrees.some(d => d.id === degree.id)) {
+                                                updatedDegrees.push(degree);
+                                              }
+                                              return {
+                                                ...prev,
+                                                degrees: updatedDegrees
+                                              };
+                                            });
+                                            
+                                            throw new Error(response.error);
+                                          }
+                                          
+                                          toast({
+                                            title: "Program removed",
+                                            description: `Removed ${degree.degree.name} from your plan`
+                                          });
+                                        }, 300);
+                                      } catch (error) {
+                                        toast({
+                                          title: "Error",
+                                          description: `Failed to remove program: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                                          variant: "destructive"
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                                <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
+                                  <div 
+                                    className="h-full bg-primary rounded-full"
+                                    style={{ width: `${calculateProgress()}%` }}
+                                  ></div>
+                                </div>
                               </div>
-                              <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
-                                <div 
-                                  className="h-full bg-primary rounded-full"
-                                  style={{ width: `${calculateProgress()}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          ))
+                            ))}
+                          </div>
                         ) : (
-                          <p className="text-sm text-muted-foreground mb-3">No programs added yet</p>
+                          <div className="border rounded-md p-4 text-center animate-fadeIn">
+                            <AlertTriangle className="h-5 w-5 mx-auto mb-2 text-amber-500" />
+                            <p className="text-sm font-medium mb-1">No programs added yet</p>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              Add a program to track your degree requirements
+                            </p>
+                          </div>
                         )}
-                        <Button variant="outline" size="sm" className="w-full mt-2">
-                          Add Program
-                        </Button>
+                        <PlanAddProgram 
+                          planId={planId} 
+                          onProgramAdded={() => {
+                            // Refresh plan data
+                            const fetchPlan = async () => {
+                              setIsLoading(true);
+                              const response = await getPlan(planId);
+                              setIsLoading(false);
+                              
+                              if (response.error) {
+                                toast({
+                                  title: "Error",
+                                  description: `Failed to load plan: ${response.error}`,
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              
+                              if (response.data) {
+                                setPlan(response.data.plan);
+                              }
+                            };
+                            
+                            fetchPlan();
+                          }} 
+                        />
                       </div>
                       
                       <div className="border-t pt-4 mt-4">

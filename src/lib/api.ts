@@ -84,7 +84,13 @@ export async function createPlan(data: { name: string }): Promise<ApiResponse<{ 
   });
 }
 
-export async function updatePlan(id: string, data: { name: string }): Promise<ApiResponse<{ plan: Plan }>> {
+export async function updatePlan(
+  id: string, 
+  data: { 
+    name?: string;
+    academicCalendarYear?: string;
+  }
+): Promise<ApiResponse<{ plan: Plan }>> {
   return fetchApi(`/api/plans/${id}`, {
     method: 'PUT',
     headers: {
@@ -148,6 +154,32 @@ export async function removeCourseFromPlan(
   courseId: string
 ): Promise<ApiResponse<{ success: boolean }>> {
   return fetchApi(`/api/plans/${planId}/courses/${courseId}`, {
+    method: 'DELETE',
+  });
+}
+
+// Plan Degrees API
+export async function addDegreeToPlan(
+  planId: string, 
+  data: { 
+    degreeId: string; 
+    type: 'MAJOR' | 'MINOR' | 'SPECIALIZATION' | 'OPTION' | 'JOINT';
+  }
+): Promise<ApiResponse<{ planDegree: PlanDegree }>> {
+  return fetchApi(`/api/plans/${planId}/degrees`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+}
+
+export async function removeDegreeFromPlan(
+  planId: string,
+  planDegreeId: string
+): Promise<ApiResponse<{ success: boolean }>> {
+  return fetchApi(`/api/plans/${planId}/degrees/${planDegreeId}`, {
     method: 'DELETE',
   });
 }

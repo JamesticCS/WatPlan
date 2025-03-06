@@ -5,7 +5,13 @@ export type CourseStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
 export type RequirementStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
 
 // Degree types (Major, Minor, etc.)
-export type DegreeType = 'MAJOR' | 'MINOR' | 'SPECIALIZATION' | 'OPTION' | 'JOINT';
+export enum DegreeType {
+  MAJOR = 'MAJOR',
+  MINOR = 'MINOR',
+  SPECIALIZATION = 'SPECIALIZATION',
+  OPTION = 'OPTION',
+  JOINT = 'JOINT'
+}
 
 // Co-op sequence types
 export type CoopSequence = 'NO_COOP' | 'SEQUENCE_1' | 'SEQUENCE_2' | 'SEQUENCE_3' | 'SEQUENCE_4' | 'CUSTOM';
@@ -85,6 +91,9 @@ export interface DegreeRequirementSet {
   requirements: Requirement[];
 }
 
+// Academic Calendar Years
+export type AcademicCalendarYear = '2024-2025' | '2023-2024' | '2022-2023' | '2021-2022' | '2020-2021';
+
 // Plan types
 export interface Plan {
   id: string;
@@ -94,6 +103,7 @@ export interface Plan {
   updated: string;
   courses: PlanCourse[];
   degrees: PlanDegree[];
+  academicCalendarYear?: AcademicCalendarYear;
 }
 
 // Plan course types
@@ -125,4 +135,5 @@ export interface PlanDegree {
   degree: Degree;
   type: DegreeType;
   requirements: Requirement[];
+  isRemoving?: boolean;
 }
