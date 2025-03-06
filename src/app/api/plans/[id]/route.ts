@@ -6,8 +6,10 @@ import { authOptions } from '@/lib/auth';
 // GET /api/plans/[id] - Get a specific plan by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const { id } = await context.params;
+  
   try {
     const session = await getServerSession(authOptions);
     
@@ -34,7 +36,7 @@ export async function GET(
     // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
       include: {
@@ -89,8 +91,10 @@ export async function GET(
 // PUT /api/plans/[id] - Update a plan
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const { id } = await context.params;
+  
   try {
     const session = await getServerSession(authOptions);
     
@@ -120,7 +124,7 @@ export async function PUT(
     // Find the plan and check if it belongs to the user
     const existingPlan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
       },
     });
 
@@ -150,7 +154,7 @@ export async function PUT(
     // Update the plan
     const updatedPlan = await prisma.plan.update({
       where: {
-        id: params.id,
+        id,
       },
       data: updateData,
     });
@@ -168,8 +172,10 @@ export async function PUT(
 // DELETE /api/plans/[id] - Delete a plan
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const { id } = await context.params;
+  
   try {
     const session = await getServerSession(authOptions);
     
@@ -196,7 +202,7 @@ export async function DELETE(
     // Find the plan and check if it belongs to the user
     const existingPlan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
       },
     });
 
@@ -219,23 +225,23 @@ export async function DELETE(
       prisma.planRequirement.deleteMany({
         where: {
           planDegree: {
-            planId: params.id,
+            planId: id,
           },
         },
       }),
       prisma.planCourse.deleteMany({
         where: {
-          planId: params.id,
+          planId: id,
         },
       }),
       prisma.planDegree.deleteMany({
         where: {
-          planId: params.id,
+          planId: id,
         },
       }),
       prisma.plan.delete({
         where: {
-          id: params.id,
+          id,
         },
       }),
     ]);

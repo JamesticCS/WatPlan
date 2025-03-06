@@ -34,8 +34,11 @@ const coopSequencePatterns: Record<CoopSequenceType, AcademicTerm[]> = {
   SEQUENCE_2: ["1A", "COOP", "1B", "2A", "COOP", "2B", "COOP", "3A", "3B", "COOP", "4A", "4B"],
   SEQUENCE_3: ["1A", "1B", "2A", "COOP", "2B", "COOP", "3A", "COOP", "3B", "4A", "COOP", "4B"],
   SEQUENCE_4: ["1A", "1B", "COOP", "2A", "2B", "COOP", "3A", "COOP", "3B", "COOP", "4A", "4B"],
-  CUSTOM: ["1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"] // Custom can be modified by the user
+  CUSTOM: [] // Custom sequence will be built dynamically
 };
+
+// Default custom sequence terms for initialization - matching the standard 4-year program
+const defaultCustomSequence: AcademicTerm[] = ["1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"];
 
 // Co-op sequences mapping for display
 const coopSequenceMap: Record<string, string> = {
@@ -55,6 +58,9 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
   const [draggedCourse, setDraggedCourse] = useState<CourseWithStatus | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingSequence, setPendingSequence] = useState<CoopSequenceType | null>(null);
+  const [customTerms, setCustomTerms] = useState<AcademicTerm[]>(defaultCustomSequence);
+  const [editingTermId, setEditingTermId] = useState<string | null>(null);
+  const [newTermName, setNewTermName] = useState("");
   const { toast } = useToast();
   
   // Function to handle drag start
@@ -306,8 +312,11 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
   
   // Get terms based on selected sequence
   const activeTerms = useMemo(() => {
+    if (sequence === "CUSTOM") {
+      return customTerms;
+    }
     return coopSequencePatterns[sequence];
-  }, [sequence]);
+  }, [sequence, customTerms]);
 
   // Generate unique term IDs for each term in the sequence
   const termIds = useMemo(() => {
@@ -316,6 +325,227 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       id: `${term}-${index}`
     }));
   }, [activeTerms]);
+  
+  // Functions for custom sequence management
+  const addCustomTerm = (termType: AcademicTerm = "1A") => {
+    // Add the term with animation
+    setCustomTerms(prev => [...prev, termType]);
+    
+    // After state update, scroll to the new term
+    setTimeout(() => {
+      const termColumns = document.querySelectorAll('.term-column');
+      const newTermIndex = termColumns.length - 2; // Account for unscheduled section at end
+      
+      if (newTermIndex >= 0 && termColumns[newTermIndex]) {
+        // Add animation class to the new term
+        termColumns[newTermIndex].classList.add('term-new-added');
+        
+        // Scroll the term into view with behavior: 'smooth'
+        termColumns[newTermIndex].scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'nearest', 
+          inline: 'center'
+        });
+        
+        // Remove animation class after animation completes
+        setTimeout(() => {
+          termColumns[newTermIndex].classList.remove('term-new-added');
+        }, 800);
+      }
+    }, 10);
+  };
+  
+  const removeCustomTerm = (index: number) => {
+    // First move any courses in this term to Unscheduled
+    const termId = `${activeTerms[index]}-${index}`;
+    const termCourses = coursesByTerm[termId] || [];
+    
+    if (termCourses.length > 0) {
+      // Move courses to unscheduled
+      const courseUpdates = termCourses.map(course => 
+        updatePlanCourse(planId, course.id, { term: "Unscheduled", termIndex: null })
+      );
+      
+      // Update local state
+      setCourses(prevCourses => 
+        prevCourses.map(course => 
+          termCourses.some(c => c.id === course.id)
+            ? { ...course, term: "Unscheduled", termIndex: null }
+            : course
+        )
+      );
+      
+      // Execute the updates
+      Promise.all(courseUpdates).catch(error => {
+        console.error('Error moving courses to unscheduled:', error);
+        toast({
+          title: "Error",
+          description: "Failed to move some courses. Please refresh the page.",
+          variant: "destructive"
+        });
+      });
+    }
+    
+    // Remove the term
+    setCustomTerms(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const moveCustomTerm = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    
+    // Get references to the DOM elements
+    const termElements = document.querySelectorAll('.term-column');
+    if (termElements.length > fromIndex && termElements.length > toIndex) {
+      // First, remove any existing animation classes to ensure clean state
+      termElements[fromIndex].classList.remove('term-move-right', 'term-move-left', 'term-swap-right', 'term-swap-left');
+      termElements[toIndex].classList.remove('term-move-right', 'term-move-left', 'term-swap-right', 'term-swap-left');
+      
+      // Add a visual indicator - add a temporary class to both terms for visual highlighting
+      termElements[fromIndex].classList.add('term-highlight');
+      termElements[toIndex].classList.add('term-highlight');
+      
+      // Make sure these terms are visible in the viewport before animating
+      const termsContainer = document.querySelector('.terms-grid');
+      if (termsContainer) {
+        // Ensure both terms are visible before animation
+        const containerRect = termsContainer.getBoundingClientRect();
+        const fromTermRect = termElements[fromIndex].getBoundingClientRect();
+        const toTermRect = termElements[toIndex].getBoundingClientRect();
+        
+        const needsScrolling = 
+          (fromTermRect.left < containerRect.left || fromTermRect.right > containerRect.right) ||
+          (toTermRect.left < containerRect.left || toTermRect.right > containerRect.right);
+        
+        if (needsScrolling) {
+          // Use the middle element for best visibility
+          const targetIndex = fromIndex < toIndex ? 
+            fromIndex + Math.floor((toIndex - fromIndex) / 2) : 
+            toIndex + Math.floor((fromIndex - toIndex) / 2);
+          
+          termElements[targetIndex].scrollIntoView({
+            behavior: 'smooth',
+            block: 'nearest',
+            inline: 'center'
+          });
+          
+          // Give time for scrolling to complete before starting the animation
+          setTimeout(() => applyTermMoveAnimation(), 300);
+        } else {
+          applyTermMoveAnimation();
+        }
+      } else {
+        applyTermMoveAnimation();
+      }
+      
+      function applyTermMoveAnimation() {
+        // Are these adjacent terms? Then use swap animation
+        const isAdjacent = Math.abs(fromIndex - toIndex) === 1;
+        
+        // Find all course items within each term to animate them together with the term
+        const fromTermCourses = termElements[fromIndex].querySelectorAll('.course-item');
+        const toTermCourses = termElements[toIndex].querySelectorAll('.course-item');
+        
+        // Define animation duration based on whether terms are adjacent
+        const animationDuration = isAdjacent ? 550 : 450;
+        
+        // Apply term transition tracking class
+        document.body.classList.add('term-transition-active');
+
+        // Add animation classes based on direction
+        if (isAdjacent) {
+          // For adjacent terms, use the swap animation for a better visual
+          if (fromIndex < toIndex) {
+            // Moving right (swap with next)
+            termElements[fromIndex].classList.add('term-swap-right');
+            termElements[toIndex].classList.add('term-swap-left');
+            
+            // Add the same animation class to each course within the term
+            fromTermCourses.forEach(course => course.classList.add('term-swap-right'));
+            toTermCourses.forEach(course => course.classList.add('term-swap-left'));
+          } else {
+            // Moving left (swap with previous)
+            termElements[fromIndex].classList.add('term-swap-left');
+            termElements[toIndex].classList.add('term-swap-right');
+            
+            // Add the same animation class to each course within the term
+            fromTermCourses.forEach(course => course.classList.add('term-swap-left'));
+            toTermCourses.forEach(course => course.classList.add('term-swap-right'));
+          }
+        } else {
+          // For non-adjacent terms, use the move animation
+          if (fromIndex < toIndex) {
+            // Moving right
+            termElements[fromIndex].classList.add('term-move-right');
+            termElements[toIndex].classList.add('term-move-left');
+            
+            // Add the same animation class to each course within the term
+            fromTermCourses.forEach(course => course.classList.add('term-move-right'));
+            toTermCourses.forEach(course => course.classList.add('term-move-left'));
+          } else {
+            // Moving left
+            termElements[fromIndex].classList.add('term-move-left');
+            termElements[toIndex].classList.add('term-move-right');
+            
+            // Add the same animation class to each course within the term
+            fromTermCourses.forEach(course => course.classList.add('term-move-left'));
+            toTermCourses.forEach(course => course.classList.add('term-move-right'));
+          }
+        }
+        
+        // Add a pulse effect to the term headers for more visual impact
+        const fromTermHeader = termElements[fromIndex].querySelector('.term-header');
+        const toTermHeader = termElements[toIndex].querySelector('.term-header');
+        
+        if (fromTermHeader) fromTermHeader.classList.add('term-header-pulse');
+        if (toTermHeader) toTermHeader.classList.add('term-header-pulse');
+        
+        // Remove animation classes after animation completes
+        setTimeout(() => {
+          // Remove term animation classes
+          termElements[fromIndex].classList.remove('term-move-right', 'term-move-left', 'term-swap-right', 'term-swap-left', 'term-highlight');
+          termElements[toIndex].classList.remove('term-move-right', 'term-move-left', 'term-swap-right', 'term-swap-left', 'term-highlight');
+          
+          // Remove course animation classes
+          fromTermCourses.forEach(course => 
+            course.classList.remove('term-move-right', 'term-move-left', 'term-swap-right', 'term-swap-left'));
+          toTermCourses.forEach(course => 
+            course.classList.remove('term-move-right', 'term-move-left', 'term-swap-right', 'term-swap-left'));
+          
+          // Remove header pulse effect
+          if (fromTermHeader) fromTermHeader.classList.remove('term-header-pulse');
+          if (toTermHeader) toTermHeader.classList.remove('term-header-pulse');
+          
+          // Remove transition tracking class
+          document.body.classList.remove('term-transition-active');
+        }, animationDuration); 
+        
+        // Update the state
+        setCustomTerms(prev => {
+          const newTerms = [...prev];
+          const [movedTerm] = newTerms.splice(fromIndex, 1);
+          newTerms.splice(toIndex, 0, movedTerm);
+          return newTerms;
+        });
+      }
+    } else {
+      // If DOM elements aren't ready yet, just update the state
+      setCustomTerms(prev => {
+        const newTerms = [...prev];
+        const [movedTerm] = newTerms.splice(fromIndex, 1);
+        newTerms.splice(toIndex, 0, movedTerm);
+        return newTerms;
+      });
+    }
+  };
+  
+  const updateCustomTermName = (index: number, newName: string) => {
+    setCustomTerms(prev => {
+      const newTerms = [...prev];
+      newTerms[index] = newName;
+      return newTerms;
+    });
+    setEditingTermId(null);
+  };
 
   // Group courses by term with unique COOP terms
   const coursesByTerm = useMemo(() => {
@@ -572,6 +802,168 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
           animation: fadeIn 0.3s ease-in-out forwards;
         }
         
+        /* Term move animations */
+        @keyframes moveLeft {
+          0% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; }
+          10% { transform: translateX(-5px); opacity: 0.95; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+          30% { transform: translateX(-20px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
+          60% { transform: translateX(-30px); opacity: 0.85; box-shadow: 0 0 20px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
+          80% { transform: translateX(-10px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.06)); }
+          100% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; background-color: transparent; }
+        }
+
+        @keyframes moveRight {
+          0% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; }
+          10% { transform: translateX(5px); opacity: 0.95; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
+          30% { transform: translateX(20px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
+          60% { transform: translateX(30px); opacity: 0.85; box-shadow: 0 0 20px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
+          80% { transform: translateX(10px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.06)); }
+          100% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; background-color: transparent; }
+        }
+        
+        @keyframes swapLeft {
+          0% { transform: translateX(0); z-index: 2; box-shadow: 0 0 0 rgba(0,0,0,0); }
+          20% { transform: translateX(-30%); z-index: 2; box-shadow: 0 5px 20px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
+          40% { transform: translateX(calc(-100% - 1rem)); z-index: 2; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
+          60% { transform: translateX(calc(-100% - 1rem)); z-index: 1; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
+          80% { transform: translateX(-30%); z-index: 1; box-shadow: 0 3px 15px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
+          100% { transform: translateX(0); z-index: 1; box-shadow: 0 0 0 rgba(0,0,0,0); background-color: transparent; }
+        }
+        
+        @keyframes swapRight {
+          0% { transform: translateX(0); z-index: 1; box-shadow: 0 0 0 rgba(0,0,0,0); }
+          20% { transform: translateX(30%); z-index: 1; box-shadow: 0 5px 15px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
+          40% { transform: translateX(calc(100% + 1rem)); z-index: 1; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
+          60% { transform: translateX(calc(100% + 1rem)); z-index: 2; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
+          80% { transform: translateX(30%); z-index: 2; box-shadow: 0 3px 15px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
+          100% { transform: translateX(0); z-index: 2; box-shadow: 0 0 0 rgba(0,0,0,0); background-color: transparent; }
+        }
+        
+        /* Button click animations for arrow buttons */
+        @keyframes arrowClickLeft {
+          0% { transform: translateX(0); }
+          50% { transform: translateX(-2px); }
+          100% { transform: translateX(0); }
+        }
+        
+        @keyframes arrowClickRight {
+          0% { transform: translateX(0); }
+          50% { transform: translateX(2px); }
+          100% { transform: translateX(0); }
+        }
+        
+        .arrow-click-left {
+          animation: arrowClickLeft 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        
+        .arrow-click-right {
+          animation: arrowClickRight 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .term-move-left {
+          animation: moveLeft 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          position: relative;
+        }
+
+        .term-move-right {
+          animation: moveRight 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          position: relative;
+        }
+        
+        .term-swap-left {
+          animation: swapLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          position: relative;
+        }
+        
+        .term-swap-right {
+          animation: swapRight 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          position: relative;
+        }
+        
+        /* New term animation */
+        @keyframes termAddedAnimation {
+          0% {
+            opacity: 0;
+            transform: translateY(10px) scale(0.95);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+          }
+          50% {
+            opacity: 1;
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+          }
+          75% {
+            transform: translateY(2px) scale(1);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            box-shadow: 0 0 0 rgba(0,0,0,0);
+          }
+        }
+        
+        .term-new-added {
+          animation: termAddedAnimation 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+          z-index: 10;
+        }
+        
+        /* Term highlight effect during swap */
+        .term-highlight {
+          outline: 2px solid var(--primary, #0070f3);
+          box-shadow: 0 0 15px rgba(0, 112, 243, 0.3);
+          z-index: 3;
+        }
+        
+        /* Term header pulse animation */
+        @keyframes termHeaderPulse {
+          0% { background-color: var(--primary); }
+          50% { background-color: var(--primary-light, rgba(0, 112, 243, 0.8)); }
+          100% { background-color: var(--primary); }
+        }
+        
+        .term-header-pulse {
+          animation: termHeaderPulse 0.5s ease-in-out;
+        }
+        
+        /* Global class to prevent other interactions during transitions */
+        .term-transition-active .term-column:not(.term-highlight) {
+          opacity: 0.7;
+          transition: opacity 0.3s ease;
+        }
+        
+        /* Ensure course items inherit animation from term */
+        .term-swap-left .course-item,
+        .term-swap-right .course-item,
+        .term-move-left .course-item,
+        .term-move-right .course-item {
+          animation: none !important; /* Override any existing animations */
+          transition: none !important; /* Override any existing transitions */
+          transform: none !important; /* Keep position relative to parent */
+        }
+        
+        /* Animated connector between swapping terms */
+        @keyframes swapConnector {
+          0% { opacity: 0; width: 0; }
+          40% { opacity: 1; width: 100%; }
+          60% { opacity: 1; width: 100%; }
+          100% { opacity: 0; width: 0; }
+        }
+        
+        .term-transition-active::before {
+          content: '';
+          position: fixed;
+          top: 50%;
+          left: 0;
+          right: 0;
+          height: 4px;
+          background: var(--primary, #0070f3);
+          z-index: 5;
+          opacity: 0;
+          transform: translateY(-50%);
+          animation: swapConnector 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+          pointer-events: none;
+        }
+        
         /* Remove course button hover effect */
         .remove-course-btn {
           cursor: pointer !important;
@@ -681,6 +1073,10 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                   setPendingSequence(newSequence);
                   setDialogOpen(true);
                 } else {
+                  // If changing to custom sequence, initialize with default terms
+                  if (newSequence === "CUSTOM") {
+                    setCustomTerms(defaultCustomSequence);
+                  }
                   setSequence(newSequence);
                 }
               }}
@@ -694,6 +1090,54 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
           </div>
         </div>
       </div>
+      
+      {/* Custom Sequence Controls */}
+      {sequence === "CUSTOM" && (
+        <div className="flex items-center gap-3 mb-4 p-4 border rounded-lg bg-muted/20 animate-fadeIn">
+          <div className="flex-1">
+            <h3 className="text-sm font-medium mb-1">Custom Sequence</h3>
+            <p className="text-xs text-muted-foreground">
+              Create your own custom academic sequence by adding, removing, and rearranging terms.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex items-center">
+              <select 
+                className="rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onChange={(e) => {
+                  const selectedValue = e.target.value;
+                  if (selectedValue) {
+                    addCustomTerm(selectedValue as AcademicTerm);
+                    e.currentTarget.value = ""; // Reset after selection
+                  }
+                }}
+                value=""
+              >
+                <option value="" disabled>Add term...</option>
+                <option value="1A">1A</option>
+                <option value="1B">1B</option>
+                <option value="2A">2A</option>
+                <option value="2B">2B</option>
+                <option value="3A">3A</option>
+                <option value="3B">3B</option>
+                <option value="4A">4A</option>
+                <option value="4B">4B</option>
+                <option value="COOP">Co-op Term</option>
+                <option value="Custom">Custom Term</option>
+              </select>
+            </div>
+            <Button
+              variant="outline" 
+              size="sm"
+              className="whitespace-nowrap"
+              onClick={() => addCustomTerm("Custom")}
+            >
+              <PlusIcon className="h-4 w-4 mr-1" />
+              Add Custom Term
+            </Button>
+          </div>
+        </div>
+      )}
       
       <div className="w-full mb-4 pt-2 overflow-x-auto">
         <div className="terms-grid">
@@ -713,23 +1157,133 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                 e.currentTarget.classList.remove('term-column-drag-over');
               }}
             >
-              <div className="term-header flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <span>{term === "COOP" ? 
-                    `Work Term ${activeTerms.slice(0, index).filter(t => t === "COOP").length + 1}` : 
-                    term}
-                  </span>
-                  {coursesByTerm[id]?.length > 0 && (
-                    <span className="text-sm font-medium py-0.5 px-2 rounded-md bg-emerald-500/20 text-emerald-700 animate-fadeIn">
-                      {coursesByTerm[id].reduce((sum, course) => sum + (parseFloat(course.units) || 0), 0).toFixed(1)} total units
-                    </span>
+              <div className={`term-header ${sequence === "CUSTOM" ? "flex flex-col" : "flex justify-between items-center"}`}>
+                <div className={`flex ${sequence === "CUSTOM" ? "justify-between w-full" : "items-center gap-2"}`}>
+                  <div className="flex flex-col">
+                    {sequence === "CUSTOM" && editingTermId === id ? (
+                      <input
+                        type="text"
+                        className="rounded-md border border-input bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={newTermName}
+                        onChange={(e) => setNewTermName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            updateCustomTermName(index, newTermName);
+                          } else if (e.key === 'Escape') {
+                            setEditingTermId(null);
+                          }
+                        }}
+                        onBlur={() => {
+                          if (newTermName.trim()) {
+                            updateCustomTermName(index, newTermName);
+                          } else {
+                            setEditingTermId(null);
+                          }
+                        }}
+                        autoFocus
+                      />
+                    ) : (
+                      <span 
+                        className={sequence === "CUSTOM" ? "cursor-pointer hover:underline" : ""}
+                        onClick={() => {
+                          if (sequence === "CUSTOM") {
+                            setEditingTermId(id);
+                            setNewTermName(term === "COOP" 
+                              ? `Work Term ${activeTerms.slice(0, index).filter(t => t === "COOP").length + 1}` 
+                              : term);
+                          }
+                        }}
+                      >
+                        {term === "COOP" 
+                          ? `Work Term ${activeTerms.slice(0, index).filter(t => t === "COOP").length + 1}` 
+                          : term}
+                      </span>
+                    )}
+                    {sequence !== "CUSTOM" && coursesByTerm[id]?.length > 0 && (
+                      <span className="text-xs font-medium py-0.5 px-2 mt-1 rounded-md bg-emerald-500/20 text-emerald-700 animate-fadeIn ml-0 inline-block">
+                        {coursesByTerm[id].reduce((sum, course) => sum + (parseFloat(course.units) || 0), 0).toFixed(1)} units
+                      </span>
+                    )}
+                  </div>
+                  
+                  {sequence === "CUSTOM" && (
+                    <div className="flex items-center">
+                      {index > 0 && (
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-7 w-7 p-0 mx-1 hover:bg-primary-foreground/20"
+                          onClick={(e) => {
+                            // Apply animation to the button
+                            const button = e.currentTarget;
+                            button.classList.remove('arrow-click-left');
+                            // Force a reflow to restart animation
+                            void button.offsetWidth;
+                            button.classList.add('arrow-click-left');
+                            
+                            // Move the term
+                            moveCustomTerm(index, index - 1);
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m15 18-6-6 6-6" />
+                          </svg>
+                        </Button>
+                      )}
+                      {index < activeTerms.length - 1 && (
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-7 w-7 p-0 mx-1 hover:bg-primary-foreground/20"
+                          onClick={(e) => {
+                            // Apply animation to the button
+                            const button = e.currentTarget;
+                            button.classList.remove('arrow-click-right');
+                            // Force a reflow to restart animation
+                            void button.offsetWidth;
+                            button.classList.add('arrow-click-right');
+                            
+                            // Move the term
+                            moveCustomTerm(index, index + 1);
+                          }}
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m9 18 6-6-6-6" />
+                          </svg>
+                        </Button>
+                      )}
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="h-7 w-7 p-0 mx-1 text-red-500 hover:bg-red-50 hover:text-red-600"
+                        onClick={() => removeCustomTerm(index)}
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
+                      <Link href={`/plans/${planId}/add-course?term=${id}`}>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 hover:bg-primary-foreground/20">
+                          <PlusIcon className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                  
+                  {sequence !== "CUSTOM" && (
+                    <Link href={`/plans/${planId}/add-course?term=${id}`}>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
+                        <PlusIcon className="h-4 w-4" />
+                      </Button>
+                    </Link>
                   )}
                 </div>
-                <Link href={`/plans/${planId}/add-course?term=${id}`}>
-                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
-                    <PlusIcon className="h-4 w-4" />
-                  </Button>
-                </Link>
+                
+                {sequence === "CUSTOM" && coursesByTerm[id]?.length > 0 && (
+                  <div className="mt-1">
+                    <span className="text-xs font-medium py-0.5 px-2 rounded-md bg-emerald-500/20 text-emerald-700 animate-fadeIn">
+                      {coursesByTerm[id].reduce((sum, course) => sum + (parseFloat(course.units) || 0), 0).toFixed(1)} units
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="divide-y">
                 {coursesByTerm[id]?.map((course, courseIndex) => (
@@ -1087,6 +1641,10 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                   );
                   
                   // Update sequence first
+                  // If changing to custom sequence, initialize with default terms
+                  if (pendingSequence === "CUSTOM") {
+                    setCustomTerms(defaultCustomSequence);
+                  }
                   setSequence(pendingSequence);
                   setDialogOpen(false);
                   setPendingSequence(null);

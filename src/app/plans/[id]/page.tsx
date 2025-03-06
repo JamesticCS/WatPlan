@@ -282,7 +282,10 @@ export default function PlanDetailPage() {
                             </p>
                             <div className="flex flex-col sm:flex-row gap-3 justify-center">
                               {!plan.academicCalendarYear && (
-                                <Button variant="outline" className="inline-flex items-center" onClick={() => document.querySelector('button[aria-label="Select Academic Calendar"]')?.click()}>
+                                <Button variant="outline" className="inline-flex items-center" onClick={(e) => {
+                                  e.preventDefault(); // Prevent any default navigation
+                                  document.querySelector('button[aria-label="Select Academic Calendar"]')?.click();
+                                }}>
                                   <Calendar className="mr-2 h-4 w-4" />
                                   Select Academic Calendar
                                 </Button>

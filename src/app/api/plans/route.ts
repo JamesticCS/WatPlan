@@ -36,7 +36,11 @@ export async function GET(request: NextRequest) {
       include: {
         degrees: {
           include: {
-            degree: true,
+            degree: {
+              include: {
+                program: true,
+              }
+            }
           }
         },
         courses: {

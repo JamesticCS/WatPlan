@@ -6,8 +6,9 @@ import { authOptions } from '@/lib/auth';
 // PUT /api/plans/[id]/courses/[courseId] - Update a course in a plan
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string; courseId: string } }
+  context: { params: { id: string; courseId: string } }
 ) {
+  const { id, courseId } = await context.params;
   try {
     const session = await getServerSession(authOptions);
     
@@ -34,7 +35,7 @@ export async function PUT(
     // Check if plan exists and belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -50,8 +51,8 @@ export async function PUT(
     const existingPlanCourse = await prisma.planCourse.findUnique({
       where: {
         planId_courseId: {
-          planId: params.id,
-          courseId: params.courseId,
+          planId: id,
+          courseId,
         },
       },
     });
@@ -70,8 +71,8 @@ export async function PUT(
     const updatedPlanCourse = await prisma.planCourse.update({
       where: {
         planId_courseId: {
-          planId: params.id,
-          courseId: params.courseId,
+          planId: id,
+          courseId,
         },
       },
       data: {
@@ -98,8 +99,9 @@ export async function PUT(
 // DELETE /api/plans/[id]/courses/[courseId] - Remove a course from a plan
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; courseId: string } }
+  context: { params: { id: string; courseId: string } }
 ) {
+  const { id, courseId } = await context.params;
   try {
     const session = await getServerSession(authOptions);
     
@@ -126,7 +128,7 @@ export async function DELETE(
     // Check if plan exists and belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -142,8 +144,8 @@ export async function DELETE(
     const existingPlanCourse = await prisma.planCourse.findUnique({
       where: {
         planId_courseId: {
-          planId: params.id,
-          courseId: params.courseId,
+          planId: id,
+          courseId,
         },
       },
     });
@@ -159,8 +161,8 @@ export async function DELETE(
     await prisma.planCourse.delete({
       where: {
         planId_courseId: {
-          planId: params.id,
-          courseId: params.courseId,
+          planId: id,
+          courseId,
         },
       },
     });

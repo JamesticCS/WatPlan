@@ -150,14 +150,15 @@ model DegreeRequirementCourse {
 }
 
 model Plan {
-  id          String @id @default(cuid())
-  name        String
-  userId      String
-  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  created     DateTime @default(now())
-  updated     DateTime @updatedAt
-  courses     PlanCourse[]
-  degrees     PlanDegree[]
+  id                   String @id @default(cuid())
+  name                 String
+  userId               String
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  created              DateTime @default(now())
+  updated              DateTime @updatedAt
+  academicCalendarYear String?
+  courses              PlanCourse[]
+  degrees              PlanDegree[]
 }
 
 model PlanCourse {

@@ -13,17 +13,26 @@ interface PlanAddProgramProps {
   onProgramAdded: () => void;
 }
 
+// Define program option interface that combines degree and type
+interface ProgramOption {
+  id: string;
+  degreeId: string;
+  degreeName: string;
+  programName: string;
+  facultyName?: string;
+  type: DegreeType;
+}
+
 export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFaculty, setSelectedFaculty] = useState<string | null>(null);
-  const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
-  const [selectedDegree, setSelectedDegree] = useState<Degree | null>(null);
-  const [selectedType, setSelectedType] = useState<DegreeType | null>(null);
+  const [selectedProgramOption, setSelectedProgramOption] = useState<ProgramOption | null>(null);
   const [faculties, setFaculties] = useState<Faculty[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
+  const [programOptions, setProgramOptions] = useState<ProgramOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState<'faculty' | 'program' | 'degree' | 'type'>('faculty');
+  const [step, setStep] = useState<'faculty' | 'program'>('faculty');
   const { toast } = useToast();
   
   // Load faculties on component mount
@@ -75,6 +84,51 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
       
       if (response.data?.programs) {
         setPrograms(response.data.programs);
+        
+        // Create program options from loaded programs
+        const options: ProgramOption[] = [];
+        
+        // For now, let's simulate having specific degree type combinations
+        // In real implementation, these would come from the backend
+        response.data.programs.forEach(program => {
+          program.degrees.forEach(degree => {
+            // Major is available for most programs
+            options.push({
+              id: `${degree.id}-MAJOR`,
+              degreeId: degree.id,
+              degreeName: degree.name,
+              programName: program.name,
+              facultyName: program.faculty?.name,
+              type: DegreeType.MAJOR
+            });
+            
+            // Only add minor for select programs (e.g. Math-related)
+            if (program.name.includes('Math') || program.name.includes('Computer Science')) {
+              options.push({
+                id: `${degree.id}-MINOR`,
+                degreeId: degree.id,
+                degreeName: degree.name,
+                programName: program.name,
+                facultyName: program.faculty?.name,
+                type: DegreeType.MINOR
+              });
+            }
+            
+            // Only add specialization for select programs
+            if (program.name.includes('Science') || program.name.includes('Engineering')) {
+              options.push({
+                id: `${degree.id}-SPECIALIZATION`,
+                degreeId: degree.id,
+                degreeName: degree.name,
+                programName: program.name,
+                facultyName: program.faculty?.name,
+                type: DegreeType.SPECIALIZATION
+              });
+            }
+          });
+        });
+        
+        setProgramOptions(options);
       }
     };
     
@@ -89,9 +143,7 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
       setTimeout(() => {
         setSearchQuery("");
         setSelectedFaculty(null);
-        setSelectedProgram(null);
-        setSelectedDegree(null);
-        setSelectedType(null);
+        setSelectedProgramOption(null);
         setStep('faculty');
       }, 300); // Add slight delay to prevent flickering during close animation
     }
@@ -103,34 +155,17 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
     setStep('program');
   };
   
-  // Handle program selection
-  const handleProgramSelect = (program: Program) => {
-    setSelectedProgram(program);
-    if (program.degrees.length === 1) {
-      setSelectedDegree(program.degrees[0]);
-      setStep('type');
-    } else {
-      setStep('degree');
-    }
-  };
-  
-  // Handle degree selection
-  const handleDegreeSelect = (degree: Degree) => {
-    setSelectedDegree(degree);
-    setStep('type');
-  };
-  
-  // Handle degree type selection
-  const handleTypeSelect = (type: DegreeType) => {
-    setSelectedType(type);
+  // Handle program option selection
+  const handleProgramOptionSelect = (option: ProgramOption) => {
+    setSelectedProgramOption(option);
   };
   
   // Handle adding the program to the plan
   const handleAddProgram = async () => {
-    if (!selectedDegree || !selectedType) {
+    if (!selectedProgramOption) {
       toast({
         title: "Error",
-        description: "Please select a degree and type",
+        description: "Please select a program",
         variant: "destructive",
       });
       return;
@@ -138,8 +173,8 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
     
     setIsLoading(true);
     const response = await addDegreeToPlan(planId, {
-      degreeId: selectedDegree.id,
-      type: selectedType,
+      degreeId: selectedProgramOption.degreeId,
+      type: selectedProgramOption.type,
     });
     setIsLoading(false);
     
@@ -154,7 +189,7 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
     
     toast({
       title: "Program added",
-      description: `Added ${selectedDegree.name} (${selectedType.toLowerCase()}) to your plan`,
+      description: `Added ${selectedProgramOption.programName} (${getDegreeTypeDisplay(selectedProgramOption.type)}) to your plan`,
     });
     
     setIsOpen(false);
@@ -188,7 +223,7 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full">
+        <Button variant="outline" size="sm" className="w-full" aria-label="Add Program">
           Add Program
         </Button>
       </DialogTrigger>
@@ -216,214 +251,139 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
           )}
         </div>
         
-        {/* Selection breadcrumbs */}
-        {(selectedFaculty || selectedProgram || selectedDegree || selectedType) && (
-          <div className="flex flex-wrap gap-2 mb-4 animate-fadeIn">
-            {selectedFaculty && faculties.find(f => f.id === selectedFaculty) && (
-              <div className="flex items-center bg-primary/10 text-primary rounded-full px-3 py-1 text-sm">
-                <span>{faculties.find(f => f.id === selectedFaculty)?.name}</span>
-                <button 
-                  className="ml-2 hover:bg-primary/20 rounded-full p-0.5"
-                  onClick={() => {
-                    setSelectedFaculty(null);
-                    setSelectedProgram(null);
-                    setSelectedDegree(null);
-                    setSelectedType(null);
-                    setStep('faculty');
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            
-            {selectedProgram && (
-              <div className="flex items-center bg-primary/10 text-primary rounded-full px-3 py-1 text-sm">
-                <span>{selectedProgram.name}</span>
-                <button 
-                  className="ml-2 hover:bg-primary/20 rounded-full p-0.5"
-                  onClick={() => {
-                    setSelectedProgram(null);
-                    setSelectedDegree(null);
-                    setSelectedType(null);
-                    setStep('program');
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            
-            {selectedDegree && (
-              <div className="flex items-center bg-primary/10 text-primary rounded-full px-3 py-1 text-sm">
-                <span>{selectedDegree.name}</span>
-                <button 
-                  className="ml-2 hover:bg-primary/20 rounded-full p-0.5"
-                  onClick={() => {
-                    setSelectedDegree(null);
-                    setSelectedType(null);
-                    setStep('degree');
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-            
-            {selectedType && (
-              <div className="flex items-center bg-primary/10 text-primary rounded-full px-3 py-1 text-sm">
-                <span>{getDegreeTypeDisplay(selectedType)}</span>
-                <button 
-                  className="ml-2 hover:bg-primary/20 rounded-full p-0.5"
-                  onClick={() => {
-                    setSelectedType(null);
-                    setStep('type');
-                  }}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Content based on current step */}
-        <div className="max-h-[50vh] overflow-y-auto pr-1">
-          {isLoading ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            </div>
-          ) : searchQuery && programs.length > 0 ? (
-            <div className="space-y-2 animate-fadeIn">
-              <h3 className="text-sm font-medium mb-2">Search Results</h3>
-              {programs.map((program) => (
-                <div
-                  key={program.id}
-                  className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedProgram?.id === program.id ? 'border-primary bg-primary/10' : ''}`}
-                  onClick={() => handleProgramSelect(program)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-medium">{program.name}</h4>
-                      <p className="text-sm text-muted-foreground">{program.faculty?.name}</p>
-                      {program.degrees.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {program.degrees.map((degree) => (
-                            <Badge key={degree.id} variant="outline" className="text-xs">
-                              {degree.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    {selectedProgram?.id === program.id && (
-                      <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : step === 'faculty' && faculties.length > 0 ? (
-            <div className="space-y-2 animate-fadeIn">
-              <h3 className="text-sm font-medium mb-2">Select a Faculty</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {faculties.map((faculty) => (
-                  <div
-                    key={faculty.id}
-                    className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedFaculty === faculty.id ? 'border-primary bg-primary/10' : ''}`}
-                    onClick={() => handleFacultySelect(faculty.id)}
+        {/* Selection breadcrumbs - fixed height container */}
+        <div className="h-10 mb-4">
+          {(selectedFaculty || selectedProgramOption) && (
+            <div className="flex flex-wrap gap-2 transition-opacity duration-200">
+              {selectedFaculty && faculties.find(f => f.id === selectedFaculty) && (
+                <div className="flex items-center bg-primary/10 text-primary rounded-full px-3 py-1 text-sm">
+                  <span>{faculties.find(f => f.id === selectedFaculty)?.name}</span>
+                  <button 
+                    className="ml-2 hover:bg-primary/20 rounded-full p-0.5"
+                    onClick={() => {
+                      setSelectedFaculty(null);
+                      setSelectedProgramOption(null);
+                      setStep('faculty');
+                    }}
                   >
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-medium">{faculty.name}</h4>
-                      {selectedFaculty === faculty.id && (
-                        <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                      )}
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Content container with fixed height */}
+        <div className="h-[400px] overflow-hidden">
+          {/* Loading state */}
+          <div className={`absolute inset-0 flex items-center justify-center bg-background z-10 transition-opacity duration-300 ${isLoading ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className="flex flex-col items-center">
+              <div className="h-8 w-8 border-4 border-primary/20 border-t-primary rounded-full animate-rotate"></div>
+              <p className="text-sm text-muted-foreground mt-2">Loading...</p>
+            </div>
+          </div>
+          
+          {/* Content based on current step - all rendered simultaneously but with opacity transitions */}
+          <div className="h-full relative">
+            {/* Search results */}
+            <div className={`absolute inset-0 overflow-y-auto transition-opacity duration-300 ${searchQuery && programOptions.length > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <div className="space-y-2 pb-4">
+                <h3 className="text-sm font-medium mb-2">Search Results</h3>
+                {programOptions.map((option) => (
+                  <div
+                    key={option.id}
+                    className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedProgramOption?.id === option.id ? 'border-primary bg-primary/10' : ''}`}
+                    onClick={() => handleProgramOptionSelect(option)}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center">
+                          {getDegreeTypeIcon(option.type)}
+                          <h4 className="font-medium">{option.programName}</h4>
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            {getDegreeTypeDisplay(option.type)}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{option.facultyName}</p>
+                      </div>
+                      <div className="h-5 w-5 flex items-center justify-center">
+                        {selectedProgramOption?.id === option.id && (
+                          <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                        )}
+                      </div>
                     </div>
-                    {faculty.description && (
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-1">{faculty.description}</p>
-                    )}
                   </div>
                 ))}
               </div>
             </div>
-          ) : step === 'program' && programs.length > 0 ? (
-            <div className="space-y-2 animate-fadeIn">
-              <h3 className="text-sm font-medium mb-2">Select a Program</h3>
-              {programs.map((program) => (
-                <div
-                  key={program.id}
-                  className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedProgram?.id === program.id ? 'border-primary bg-primary/10' : ''}`}
-                  onClick={() => handleProgramSelect(program)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-medium">{program.name}</h4>
-                      {program.degrees.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {program.degrees.map((degree) => (
-                            <Badge key={degree.id} variant="outline" className="text-xs">
-                              {degree.name}
-                            </Badge>
-                          ))}
+            
+            {/* Faculty selection */}
+            <div className={`absolute inset-0 overflow-y-auto transition-opacity duration-300 ${!searchQuery && step === 'faculty' && faculties.length > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <div className="space-y-2 pb-4">
+                <h3 className="text-sm font-medium mb-2">Select a Faculty</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {faculties.map((faculty) => (
+                    <div
+                      key={faculty.id}
+                      className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedFaculty === faculty.id ? 'border-primary bg-primary/10' : ''}`}
+                      onClick={() => handleFacultySelect(faculty.id)}
+                    >
+                      <div className="flex justify-between items-center">
+                        <h4 className="font-medium">{faculty.name}</h4>
+                        <div className="h-5 w-5 flex items-center justify-center">
+                          {selectedFaculty === faculty.id && (
+                            <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                          )}
                         </div>
+                      </div>
+                      {faculty.description && (
+                        <p className="text-sm text-muted-foreground mt-1 line-clamp-1">{faculty.description}</p>
                       )}
                     </div>
-                    {selectedProgram?.id === program.id && (
-                      <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
-          ) : step === 'degree' && selectedProgram ? (
-            <div className="space-y-2 animate-fadeIn">
-              <h3 className="text-sm font-medium mb-2">Select a Degree</h3>
-              {selectedProgram.degrees.map((degree) => (
-                <div
-                  key={degree.id}
-                  className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedDegree?.id === degree.id ? 'border-primary bg-primary/10' : ''}`}
-                  onClick={() => handleDegreeSelect(degree)}
-                >
-                  <div className="flex justify-between items-center">
-                    <h4 className="font-medium">{degree.name}</h4>
-                    {selectedDegree?.id === degree.id && (
-                      <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                    )}
-                  </div>
-                  {degree.description && (
-                    <p className="text-sm text-muted-foreground mt-1">{degree.description}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : step === 'type' && selectedDegree ? (
-            <div className="space-y-2 animate-fadeIn">
-              <h3 className="text-sm font-medium mb-2">Select a Degree Type</h3>
-              {Object.values(DegreeType).map((type) => (
-                <div
-                  key={type}
-                  className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedType === type ? 'border-primary bg-primary/10' : ''}`}
-                  onClick={() => handleTypeSelect(type)}
-                >
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center">
-                      {getDegreeTypeIcon(type)}
-                      <h4 className="font-medium">{getDegreeTypeDisplay(type)}</h4>
+            
+            {/* Program selection */}
+            <div className={`absolute inset-0 overflow-y-auto transition-opacity duration-300 ${!searchQuery && step === 'program' && programOptions.length > 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+              <div className="space-y-2 pb-4">
+                <h3 className="text-sm font-medium mb-2">Select a Program</h3>
+                {programOptions.map((option) => (
+                  <div
+                    key={option.id}
+                    className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedProgramOption?.id === option.id ? 'border-primary bg-primary/10' : ''}`}
+                    onClick={() => handleProgramOptionSelect(option)}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          {getDegreeTypeIcon(option.type)}
+                          <h4 className="font-medium">{option.programName}</h4>
+                          <Badge variant="outline" className="text-xs">
+                            {getDegreeTypeDisplay(option.type)}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="h-5 w-5 flex items-center justify-center">
+                        {selectedProgramOption?.id === option.id && (
+                          <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                        )}
+                      </div>
                     </div>
-                    {selectedType === type && (
-                      <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                    )}
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="py-8 text-center animate-fadeIn">
+            
+            {/* No results */}
+            <div className={`absolute inset-0 flex items-center justify-center transition-opacity duration-300 ${!isLoading && ((searchQuery && programOptions.length === 0) || (!searchQuery && (step === 'faculty' && faculties.length === 0 || step === 'program' && programOptions.length === 0))) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
               <p className="text-sm text-muted-foreground">
                 {searchQuery ? "No programs found. Try a different search term." : "No data available."}
               </p>
             </div>
-          )}
+          </div>
         </div>
         
         {/* Action buttons */}
@@ -432,7 +392,7 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
             Cancel
           </Button>
           <Button 
-            disabled={!selectedDegree || !selectedType || isLoading} 
+            disabled={!selectedProgramOption || isLoading} 
             onClick={handleAddProgram}
           >
             Add to Plan
@@ -440,23 +400,7 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
         </div>
       </DialogContent>
       
-      {/* CSS for animations */}
-      <style jsx global>{`
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(5px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fadeIn {
-          animation: fadeIn 0.3s ease-in-out forwards;
-        }
-      `}</style>
+      {/* CSS for animations - no longer needed with our new approach */}
     </Dialog>
   );
 }

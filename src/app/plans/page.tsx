@@ -158,13 +158,13 @@ export default function PlansPage() {
                           <div className="flex flex-wrap gap-2 mb-4">
                             {plan.degrees.map((planDegree) => (
                               <span key={planDegree.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted">
-                                {planDegree.type}: {planDegree.degree.program?.name || planDegree.degree.name}
+                                {planDegree.type}: {planDegree.degree.program?.name}
                               </span>
                             ))}
                           </div>
                         ) : (
                           <p className="text-sm text-muted-foreground mb-4">
-                            No degrees added yet
+                            No programs added yet
                           </p>
                         )}
                         <div>
