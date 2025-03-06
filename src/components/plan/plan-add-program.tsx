@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { addDegreeToPlan, getFaculties, getPrograms, updatePlan } from "@/lib/api";
+import { addDegreeToPlan, getFaculties, getPrograms, updatePlan, updatePlanRequirements } from "@/lib/api";
 import { Degree, DegreeType, Faculty, Program } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 import { X, Search, CheckCircle, BookOpen, GraduationCap, Award, Calendar } from "lucide-react";
@@ -21,6 +21,7 @@ interface ProgramOption {
   programName: string;
   facultyName?: string;
   type: DegreeType;
+  variant?: string; // Regular or Co-op
 }
 
 export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) {
@@ -88,10 +89,20 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
         // Create program options from loaded programs
         const options: ProgramOption[] = [];
         
+        // Extract variant (Regular/Co-op) from degree name
+        const extractVariant = (degreeName: string): string | undefined => {
+          // Check for patterns like "Pure Mathematics (Regular) 2024-2025" or "Computer Science (Co-op)"
+          const match = degreeName.match(/\((Regular|Co-op)\)/i);
+          return match ? match[1] : undefined;
+        };
+        
         // For now, let's simulate having specific degree type combinations
         // In real implementation, these would come from the backend
         response.data.programs.forEach(program => {
           program.degrees.forEach(degree => {
+            // Extract variant (Regular/Co-op) from degree name
+            const variant = extractVariant(degree.name);
+            
             // Major is available for most programs
             options.push({
               id: `${degree.id}-MAJOR`,
@@ -99,7 +110,8 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
               degreeName: degree.name,
               programName: program.name,
               facultyName: program.faculty?.name,
-              type: DegreeType.MAJOR
+              type: DegreeType.MAJOR,
+              variant
             });
             
             // Only add minor for select programs (e.g. Math-related)
@@ -110,7 +122,8 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
                 degreeName: degree.name,
                 programName: program.name,
                 facultyName: program.faculty?.name,
-                type: DegreeType.MINOR
+                type: DegreeType.MINOR,
+                variant
               });
             }
             
@@ -122,7 +135,8 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
                 degreeName: degree.name,
                 programName: program.name,
                 facultyName: program.faculty?.name,
-                type: DegreeType.SPECIALIZATION
+                type: DegreeType.SPECIALIZATION,
+                variant
               });
             }
           });
@@ -187,9 +201,21 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
       return;
     }
     
+    // Update requirements for the newly added program
+    try {
+      const planDegree = response.data?.planDegree;
+      if (planDegree) {
+        // Update the requirements for this newly added program
+        await updatePlanRequirements(planId, planDegree.id);
+      }
+    } catch (error) {
+      console.error("Error updating requirements:", error);
+      // Continue even if requirements update fails
+    }
+
     toast({
       title: "Program added",
-      description: `Added ${selectedProgramOption.programName} (${getDegreeTypeDisplay(selectedProgramOption.type)}) to your plan`,
+      description: `Added ${selectedProgramOption.programName} (${getDegreeTypeDisplay(selectedProgramOption.type)}${selectedProgramOption.variant ? ` - ${selectedProgramOption.variant}` : ''}) to your plan`,
     });
     
     setIsOpen(false);
@@ -298,12 +324,17 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="flex items-center">
+                        <div className="flex items-center flex-wrap gap-1">
                           {getDegreeTypeIcon(option.type)}
                           <h4 className="font-medium">{option.programName}</h4>
-                          <Badge variant="outline" className="ml-2 text-xs">
+                          <Badge variant="outline" className="text-xs">
                             {getDegreeTypeDisplay(option.type)}
                           </Badge>
+                          {option.variant && (
+                            <Badge variant="secondary" className="text-xs">
+                              {option.variant}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">{option.facultyName}</p>
                       </div>
@@ -358,12 +389,17 @@ export function PlanAddProgram({ planId, onProgramAdded }: PlanAddProgramProps) 
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center flex-wrap gap-1">
                           {getDegreeTypeIcon(option.type)}
                           <h4 className="font-medium">{option.programName}</h4>
                           <Badge variant="outline" className="text-xs">
                             {getDegreeTypeDisplay(option.type)}
                           </Badge>
+                          {option.variant && (
+                            <Badge variant="secondary" className="text-xs">
+                              {option.variant}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                       <div className="h-5 w-5 flex items-center justify-center">

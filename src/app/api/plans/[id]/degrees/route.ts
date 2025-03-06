@@ -180,13 +180,61 @@ export async function POST(
               include: {
                 faculty: true,
               }
+            },
+            requirementSets: {
+              include: {
+                requirements: true
+              }
             }
           }
         },
       },
     });
 
-    return NextResponse.json({ planDegree });
+    // Create plan requirements for all requirements in this degree
+    const requirementSets = planDegree.degree.requirementSets;
+    if (requirementSets && requirementSets.length > 0) {
+      const requirements = requirementSets.flatMap(set => set.requirements);
+      
+      // Create initial plan requirements with NOT_STARTED status
+      await Promise.all(requirements.map(requirement => 
+        prisma.planRequirement.create({
+          data: {
+            planDegreeId: planDegree.id,
+            requirementId: requirement.id,
+            status: 'NOT_STARTED',
+            progress: 0
+          }
+        })
+      ));
+
+      // Update requirements based on current plan courses
+      try {
+        const { updateAllRequirementsForPlanDegree } = await import('@/lib/requirement-utils');
+        await updateAllRequirementsForPlanDegree(prisma, params.id, planDegree.id);
+      } catch (error) {
+        console.error('Error initializing requirements:', error);
+        // Continue even if requirements update fails
+      }
+    }
+
+    // Re-fetch plan degree with requirements for response
+    const updatedPlanDegree = await prisma.planDegree.findUnique({
+      where: { id: planDegree.id },
+      include: {
+        degree: {
+          include: {
+            program: {
+              include: {
+                faculty: true,
+              }
+            }
+          }
+        },
+      },
+    });
+
+    return NextResponse.json({ planDegree: updatedPlanDegree });
   } catch (error) {
     console.error('Error adding degree to plan:', error);
     return NextResponse.json(

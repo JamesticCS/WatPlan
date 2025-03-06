@@ -11,20 +11,40 @@ export async function GET(request: NextRequest) {
     const offset = searchParams.get('offset') ? parseInt(searchParams.get('offset')!) : 0;
 
     // Build filter conditions
-    const where = courseCode ? {
-      courseCode: {
-        contains: courseCode.toUpperCase(),
+    let where = {};
+    if (courseCode) {
+      // Check if the query contains both code and number (e.g., "PMATH 333" or "PMATH333")
+      const codeNumberMatch = courseCode.match(/^([A-Za-z]+)\s*(\d+)$/);
+      
+      if (codeNumberMatch) {
+        // If there's a match, filter by both code and catalog number
+        const [_, code, number] = codeNumberMatch;
+        where = {
+          AND: [
+            { courseCode: { contains: code.toUpperCase() } },
+            { catalogNumber: { contains: number } }
+          ]
+        };
+      } else {
+        // Otherwise, just filter by course code
+        where = {
+          OR: [
+            { courseCode: { contains: courseCode.toUpperCase() } },
+            { catalogNumber: { contains: courseCode } }
+          ]
+        };
       }
-    } : {};
+    }
 
     // Get courses with pagination
     const courses = await prisma.course.findMany({
       where,
       take: limit,
       skip: offset,
-      orderBy: {
-        courseCode: 'asc',
-      },
+      orderBy: [
+        { courseCode: 'asc' },
+        { catalogNumber: 'asc' }
+      ],
     });
 
     // Get total count for pagination

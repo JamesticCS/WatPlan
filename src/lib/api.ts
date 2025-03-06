@@ -4,7 +4,9 @@ import {
   Faculty, 
   Plan, 
   PlanCourse, 
-  Program 
+  PlanDegree,
+  Program,
+  Requirement
 } from "@/types";
 
 // Base fetch function with error handling
@@ -37,7 +39,11 @@ export async function getCourses(
 ): Promise<ApiResponse<{ courses: Course[]; pagination: { total: number; limit: number; offset: number } }>> {
   const searchParams = new URLSearchParams();
   if (params?.courseCode) searchParams.append('courseCode', params.courseCode);
-  if (params?.limit) searchParams.append('limit', params.limit.toString());
+  
+  // Default to 20 results if not specified (increased to show more search results)
+  const limit = params?.limit || 20;
+  searchParams.append('limit', limit.toString());
+  
   if (params?.offset) searchParams.append('offset', params.offset.toString());
 
   const url = `/api/courses${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
@@ -181,5 +187,30 @@ export async function removeDegreeFromPlan(
 ): Promise<ApiResponse<{ success: boolean }>> {
   return fetchApi(`/api/plans/${planId}/degrees/${planDegreeId}`, {
     method: 'DELETE',
+  });
+}
+
+// Requirements API
+export async function getPlanRequirements(
+  planId: string,
+  planDegreeId: string
+): Promise<ApiResponse<{ requirements: Requirement[] }>> {
+  return fetchApi(`/api/plans/${planId}/degrees/${planDegreeId}/requirements`);
+}
+
+export async function updatePlanRequirements(
+  planId: string,
+  planDegreeId: string
+): Promise<ApiResponse<{ requirements: Requirement[] }>> {
+  return fetchApi(`/api/plans/${planId}/degrees/${planDegreeId}/requirements`, {
+    method: 'PUT',
+  });
+}
+
+export async function updateAllPlanRequirements(
+  planId: string
+): Promise<ApiResponse<{ success: boolean }>> {
+  return fetchApi(`/api/plans/${planId}/requirements`, {
+    method: 'PUT',
   });
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 
 // POST /api/plans/[id]/courses - Add a course to a plan
 export async function POST(
@@ -102,6 +103,14 @@ export async function POST(
         course: true,
       },
     });
+
+    // Since a new course was added, update all plan requirements
+    try {
+      await updateAllRequirementsForPlan(prisma, params.id);
+    } catch (error) {
+      console.error('Error updating requirements after adding course:', error);
+      // Continue even if requirements update fails
+    }
 
     return NextResponse.json({ planCourse }, { status: 201 });
   } catch (error) {

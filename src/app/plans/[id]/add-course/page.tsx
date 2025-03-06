@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { getCourses, addCourseToPlan } from "@/lib/api";
+import { getCourses, addCourseToPlan, updateAllPlanRequirements } from "@/lib/api";
 import { Course } from "@/types";
 import { CheckCircle2Icon, XIcon } from "lucide-react";
 
@@ -149,8 +149,16 @@ export default function AddCoursePage() {
         }
       }
 
-      // Navigate back to plan detail if at least one course was added
+      // Update requirements before returning to plan detail
       if (results.length > 0) {
+        try {
+          // Update all requirements for the plan
+          await updateAllPlanRequirements(planId);
+        } catch (error) {
+          console.error("Error updating requirements:", error);
+        }
+        
+        // Navigate back to plan detail
         router.push(`/plans/${planId}`);
       }
     } catch (error) {
@@ -177,20 +185,25 @@ export default function AddCoursePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="e.g., MATH, CS135, Calculus"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  // No need for onKeyDown as search is triggered by the onChange debounce
-                  className="flex-1"
-                />
-                <Button 
-                  onClick={() => handleSearch(searchQuery)} 
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Searching..." : "Search"}
-                </Button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="e.g., MATH, CS135, PMATH 333, Calculus"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    // No need for onKeyDown as search is triggered by the onChange debounce
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={() => handleSearch(searchQuery)} 
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Searching..." : "Search"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Search by course code (e.g., MATH, PMATH), specific course (e.g., CS135, PMATH 333), or keywords
+                </p>
               </div>
 
               {isLoading ? (

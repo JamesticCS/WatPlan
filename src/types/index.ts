@@ -77,9 +77,18 @@ export interface Requirement {
   coursesRequired?: number;
   levelRestriction?: string;
   courseCodeRestriction?: string;
+  concentrationType?: string;
+  minCoursesPerSubject?: number;
   status: RequirementStatus;
   progress?: number;
   courses?: Course[];
+  substitutions?: { originalCourse: Course; substituteCourse: Course }[];
+  lists?: {
+    id: string;
+    name: string;
+    description?: string;
+    courses: Course[];
+  }[];
 }
 
 // Requirement set types

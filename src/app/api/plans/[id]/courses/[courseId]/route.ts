@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 
 // PUT /api/plans/[id]/courses/[courseId] - Update a course in a plan
 export async function PUT(
@@ -86,6 +87,14 @@ export async function PUT(
       },
     });
 
+    // Since the course status might have changed, update all plan requirements
+    try {
+      await updateAllRequirementsForPlan(prisma, id);
+    } catch (error) {
+      console.error('Error updating requirements after course update:', error);
+      // Continue even if requirements update fails
+    }
+
     return NextResponse.json({ planCourse: updatedPlanCourse });
   } catch (error) {
     console.error('Error updating plan course:', error);
@@ -166,6 +175,14 @@ export async function DELETE(
         },
       },
     });
+
+    // Since a course was removed, update all plan requirements
+    try {
+      await updateAllRequirementsForPlan(prisma, id);
+    } catch (error) {
+      console.error('Error updating requirements after course removal:', error);
+      // Continue even if requirements update fails
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

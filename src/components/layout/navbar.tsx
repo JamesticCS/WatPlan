@@ -49,9 +49,9 @@ export function Navbar() {
             )}
             {session ? (
               <Button 
-                variant="outline" 
+                variant="default" 
                 onClick={() => signOut()}
-                className="border-primary/30 hover:bg-primary/10 hover:text-primary font-medium transition-all ml-2"
+                className="bg-primary text-black hover:bg-primary/90 dark:hover:bg-primary/80 font-medium transition-all shadow-md hover:shadow-primary/20 ml-2"
               >
                 Sign Out
               </Button>

@@ -13,7 +13,7 @@ import { PlanAddProgram } from "@/components/plan/plan-add-program";
 import { PlanAcademicCalendar } from "@/components/plan/plan-academic-calendar";
 import { CourseWithStatus, Plan, PlanCourse, Requirement, DegreeType } from "@/types";
 import { useEffect, useState } from "react";
-import { getPlan, removeDegreeFromPlan } from "@/lib/api";
+import { getPlan, removeDegreeFromPlan, updateAllPlanRequirements } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { X, AlertTriangle, Calendar, GraduationCap } from "lucide-react";
 
@@ -128,41 +128,27 @@ export default function PlanDetailPage() {
     }));
   };
   
-  // Mock requirements data until we have real implementation
-  const mockRequirements: Requirement[] = [
-    { 
-      id: "1", 
-      name: "Required Math Courses", 
-      status: "IN_PROGRESS", 
-      progress: 80,
-      type: "COURSE_LIST",
-      description: "",
-    },
-    { 
-      id: "2", 
-      name: "Required Physics Courses", 
-      status: "IN_PROGRESS", 
-      progress: 60,
-      type: "COURSE_LIST",
-      description: "",
-    },
-    { 
-      id: "3", 
-      name: "Electives", 
-      status: "IN_PROGRESS", 
-      progress: 40,
-      type: "COURSE_LIST",
-      description: "",
-    },
-    { 
-      id: "4", 
-      name: "Additional AMATH/PHYS Courses", 
-      status: "NOT_STARTED", 
-      progress: 0,
-      type: "COURSE_LIST",
-      description: "",
-    },
-  ];
+  // Auto-refresh requirements when page loads
+  useEffect(() => {
+    const refreshRequirements = async () => {
+      if (plan && plan.academicCalendarYear && plan.degrees && plan.degrees.length > 0) {
+        try {
+          // Update all requirements for the plan
+          await updateAllPlanRequirements(planId);
+          
+          // Refresh plan data to get updated requirements
+          const response = await getPlan(planId);
+          if (response.data) {
+            setPlan(response.data.plan);
+          }
+        } catch (error) {
+          console.error("Failed to refresh requirements:", error);
+        }
+      }
+    };
+    
+    refreshRequirements();
+  }, [planId, plan?.courses?.length]);
   
   return (
     <div className="flex flex-col min-h-screen">
@@ -299,7 +285,41 @@ export default function PlanDetailPage() {
                             </div>
                           </div>
                         ) : (
-                          <PlanRequirements requirements={mockRequirements} />
+                          <>
+                            {plan.degrees.map(degree => (
+                              <div key={degree.id} className="mb-8">
+                                <h3 className="text-lg font-medium mb-4">{degree.degree.name} ({getDegreeTypeDisplay(degree.type)})</h3>
+                                <PlanRequirements 
+                                  planId={planId} 
+                                  planDegreeId={degree.id} 
+                                  requirements={degree.requirements || []}
+                                  onRequirementsUpdated={() => {
+                                    // Refresh plan data
+                                    const fetchPlan = async () => {
+                                      setIsLoading(true);
+                                      const response = await getPlan(planId);
+                                      setIsLoading(false);
+                                      
+                                      if (response.error) {
+                                        toast({
+                                          title: "Error",
+                                          description: `Failed to load plan: ${response.error}`,
+                                          variant: "destructive",
+                                        });
+                                        return;
+                                      }
+                                      
+                                      if (response.data) {
+                                        setPlan(response.data.plan);
+                                      }
+                                    };
+                                    
+                                    fetchPlan();
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </>
                         )}
                       </CardContent>
                     </Card>
