@@ -127,6 +127,15 @@ model DegreeRequirement {
   maxSubjects           Int?
   minCoursesPerSubject  Int?
   minSubjects           Int?
+  // Enhanced fields for additional requirement types
+  minGradeRequired      Int?                      // For minimum grade requirements (e.g., 60%)
+  minAverage            Float?                    // For minimum average requirements (e.g., 75%)
+  maxFailures           Int?                      // For maximum failure limits
+  failureRestriction    String?                   // Subject restriction for failure limits (e.g., "CHEM")
+  maxUnits              Float?                    // For maximum unit limits
+  requireConcurrent     String?                   // For concurrent enrollment requirements
+  customLogicType       String?                   // For complex custom logic
+  customLogicParams     String?                   // JSON string with parameters for custom logic
   substitutions         CourseSubstitution[]
   requirementSet        DegreeRequirementSet      @relation(fields: [requirementSetId], references: [id])
   courses               DegreeRequirementCourse[]
@@ -164,6 +173,7 @@ model PlanCourse {
   term      String?
   status    String
   grade     String?
+  numericGrade Float?  // Store numeric grade for average calculations
   termIndex Int?
   course    Course  @relation(fields: [courseId], references: [id])
   plan      Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)

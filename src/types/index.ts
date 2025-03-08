@@ -67,6 +67,18 @@ export interface Course {
   antirequisites?: string;
 }
 
+// Requirement type constants
+export enum RequirementType {
+  COURSE = 'COURSE',
+  COURSE_LIST = 'COURSE_LIST',
+  UNITS = 'UNITS',
+  MULTI_LIST = 'MULTI_LIST',
+  MIN_GRADE = 'MIN_GRADE',
+  MIN_AVERAGE = 'MIN_AVERAGE',
+  MAX_FAILURES = 'MAX_FAILURES',
+  CUSTOM = 'CUSTOM'
+}
+
 // Requirement types
 export interface Requirement {
   id: string;
@@ -79,6 +91,15 @@ export interface Requirement {
   courseCodeRestriction?: string;
   concentrationType?: string;
   minCoursesPerSubject?: number;
+  // Enhanced fields
+  minGradeRequired?: number;
+  minAverage?: number;
+  maxFailures?: number;
+  failureRestriction?: string;
+  maxUnits?: number;
+  requireConcurrent?: string;
+  customLogicType?: string;
+  customLogicParams?: string;
   status: RequirementStatus;
   progress?: number;
   courses?: Course[];
@@ -125,6 +146,7 @@ export interface PlanCourse {
   termIndex?: number;
   status: CourseStatus;
   grade?: string;
+  numericGrade?: number;
 }
 
 // Mock course with term and status for client components

@@ -1,5 +1,14 @@
 import { PrismaClient, Course, DegreeRequirement, PlanCourse, DegreeRequirementCourse, CourseSubstitution, RequirementList } from '@prisma/client';
-import { calculateRequirementProgressPercentage, determineRequirementStatus, isCourseCompleted, isCourseInProgress } from './utils';
+import { 
+  calculateRequirementProgressPercentage, 
+  determineRequirementStatus, 
+  isCourseCompleted, 
+  isCourseInProgress,
+  courseExceedsMinimumGrade,
+  calculateAverageGrade,
+  countFailedCourses
+} from './utils';
+import { RequirementType } from '@/types';
 
 // Calculate requirement progress based on plan courses
 export async function calculateRequirementProgress(
@@ -170,6 +179,94 @@ export async function calculateRequirementProgress(
             0,
             Math.min(completedListsCount, requirement.coursesRequired)
           );
+        }
+      }
+    } else if (requirement.type === 'MIN_GRADE') {
+      // Evaluate minimum grade requirements for specific courses
+      if (requirement.courses && requirement.courses.length > 0 && requirement.minGradeRequired) {
+        const requiredCourseIds = requirement.courses.map(c => c.courseId);
+        const coursesInPlan = planCourses.filter(pc => requiredCourseIds.includes(pc.courseId));
+        
+        // Count how many courses meet the minimum grade requirement
+        const satisfiedCourses = coursesInPlan.filter(pc => 
+          courseExceedsMinimumGrade(pc, requirement.minGradeRequired || 0)
+        ).length;
+        
+        // Calculate progress
+        const totalRequiredCourses = requiredCourseIds.length;
+        progress = totalRequiredCourses > 0 ? 
+          Math.min(100, Math.round((satisfiedCourses / totalRequiredCourses) * 100)) : 0;
+      }
+    } else if (requirement.type === 'MIN_AVERAGE') {
+      // Evaluate minimum average requirements
+      if (requirement.minAverage) {
+        // Filter courses if there are subject restrictions
+        let relevantCourses = planCourses;
+        
+        if (requirement.courseCodeRestriction) {
+          relevantCourses = filterCoursesByCode(relevantCourses, requirement.courseCodeRestriction);
+        }
+        
+        if (requirement.levelRestriction) {
+          relevantCourses = filterCoursesByLevel(relevantCourses, requirement.levelRestriction);
+        }
+        
+        // Calculate the average
+        const average = calculateAverageGrade(relevantCourses);
+        
+        // Calculate progress (100% if average meets requirement, 0% otherwise)
+        // Or we could calculate proportionally: (average / minAverage) * 100
+        progress = average >= requirement.minAverage ? 100 : 
+          Math.min(100, Math.round((average / requirement.minAverage) * 100));
+      }
+    } else if (requirement.type === 'MAX_FAILURES') {
+      // Evaluate maximum failure requirements
+      if (requirement.maxFailures !== undefined) {
+        // Count failures in the subject area if specified
+        const failureCount = countFailedCourses(planCourses, requirement.failureRestriction);
+        
+        // Requirement is met if failures <= maxFailures
+        progress = failureCount <= requirement.maxFailures ? 100 : 0;
+      }
+    } else if (requirement.type === 'CUSTOM') {
+      // Handle custom requirement logic
+      if (requirement.customLogicType) {
+        switch (requirement.customLogicType) {
+          case 'CONCURRENT_COURSES': {
+            // Check if specified courses are taken in the same term
+            // Parse the concurrent course IDs from the params
+            const params = requirement.customLogicParams ? JSON.parse(requirement.customLogicParams) : {};
+            const concurrentCourseIds = params.courseIds || [];
+            
+            if (concurrentCourseIds.length >= 2) {
+              // Group plan courses by term
+              const coursesByTerm = new Map<string, string[]>();
+              
+              for (const pc of planCourses) {
+                if (pc.term && concurrentCourseIds.includes(pc.courseId)) {
+                  if (!coursesByTerm.has(pc.term)) {
+                    coursesByTerm.set(pc.term, []);
+                  }
+                  coursesByTerm.get(pc.term)?.push(pc.courseId);
+                }
+              }
+              
+              // Check if any term has all the required courses
+              let concurrent = false;
+              for (const [term, courses] of coursesByTerm.entries()) {
+                if (courses.length === concurrentCourseIds.length) {
+                  concurrent = true;
+                  break;
+                }
+              }
+              
+              progress = concurrent ? 100 : 0;
+            }
+            break;
+          }
+          default:
+            console.log(`Unknown custom logic type: ${requirement.customLogicType}`);
+            progress = 0;
         }
       }
     }
