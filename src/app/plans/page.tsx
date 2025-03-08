@@ -4,19 +4,23 @@ import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { getPlans, deletePlan } from "@/lib/api";
+import { getPlans, deletePlan, duplicatePlan } from "@/lib/api";
 import { Plan } from "@/types";
 import { useToast } from "@/hooks/use-toast";
-import { Trash2 } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   const [planToDelete, setPlanToDelete] = useState<Plan | null>(null);
+  const [planToDuplicate, setPlanToDuplicate] = useState<Plan | null>(null);
+  const [duplicatePlanName, setDuplicatePlanName] = useState<string>("");
   const { toast } = useToast();
 
   const fetchPlans = async () => {
@@ -69,6 +73,59 @@ export default function PlansPage() {
       title: "Success",
       description: `Plan "${planToDelete.name}" has been deleted`,
     });
+  };
+  
+  const handleDuplicate = async () => {
+    if (!planToDuplicate) return;
+    
+    setIsDuplicating(true);
+    
+    const response = await duplicatePlan(planToDuplicate.id, { name: duplicatePlanName });
+    setIsDuplicating(false);
+    
+    if (response.error) {
+      toast({
+        title: "Error",
+        description: `Failed to duplicate plan: ${response.error}`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Add the new plan to the top of the list
+    if (response.data && response.data.plan) {
+      setPlans(prev => [response.data.plan, ...prev]);
+      
+      // Scroll to top of the page smoothly after adding the plan
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    }
+    
+    setPlanToDuplicate(null);
+    setDuplicatePlanName("");
+    
+    toast({
+      title: "Success",
+      description: `Plan "${planToDuplicate.name}" has been duplicated as "${duplicatePlanName}"`,
+    });
+  };
+  
+  // Helper to generate a unique plan name
+  const generateDuplicateName = (plan: Plan) => {
+    // Find if there are already duplicates of this plan
+    const namePattern = new RegExp(`^${plan.name} \\((\\d+)\\)$`);
+    const duplicates = plans
+      .map(p => {
+        const match = p.name.match(namePattern);
+        return match ? parseInt(match[1]) : 0;
+      })
+      .filter(num => num > 0);
+    
+    // If no duplicates exist, use (1), otherwise increment the highest number
+    const nextNumber = duplicates.length > 0 ? Math.max(...duplicates) + 1 : 1;
+    return `${plan.name} (${nextNumber})`;
   };
 
   // Calculate progress for each plan
@@ -131,17 +188,31 @@ export default function PlansPage() {
                   >
                     <Card className="overflow-hidden hover:shadow-md relative group h-full">
                       <div className="h-2 bg-primary"></div>
-                      <button 
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setPlanToDelete(plan);
-                        }}
-                        className="absolute right-3 top-3 p-1.5 rounded-full bg-muted/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none"
-                        aria-label={`Delete ${plan.name}`}
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="absolute right-3 top-3 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setPlanToDuplicate(plan);
+                            setDuplicatePlanName(generateDuplicateName(plan));
+                          }}
+                          className="p-1.5 rounded-full bg-muted/80 text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors focus:outline-none"
+                          aria-label={`Duplicate ${plan.name}`}
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setPlanToDelete(plan);
+                          }}
+                          className="p-1.5 rounded-full bg-muted/80 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors focus:outline-none"
+                          aria-label={`Delete ${plan.name}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                       <CardHeader>
                         <CardTitle className="flex justify-between items-center">
                           <span>{plan.name}</span>
@@ -276,6 +347,63 @@ export default function PlansPage() {
                 <>
                   <Trash2 size={16} />
                   Delete Plan
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Plan Dialog */}
+      <Dialog open={!!planToDuplicate} onOpenChange={(open) => !open && setPlanToDuplicate(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duplicate Plan</DialogTitle>
+            <DialogDescription>
+              Create a copy of <span className="font-semibold">{planToDuplicate?.name}</span> with a new name.
+              All courses, programs, and requirements will be duplicated.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label htmlFor="duplicate-plan-name" className="text-sm font-medium mb-2 block">
+              New Plan Name
+            </label>
+            <Input
+              id="duplicate-plan-name"
+              value={duplicatePlanName}
+              onChange={(e) => setDuplicatePlanName(e.target.value)}
+              placeholder="Enter a name for the duplicated plan"
+              className="w-full"
+              autoFocus
+            />
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setPlanToDuplicate(null)}
+              disabled={isDuplicating}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleDuplicate}
+              disabled={isDuplicating || !duplicatePlanName.trim()}
+              className="gap-1 items-center"
+            >
+              {isDuplicating ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Duplicating...
+                </>
+              ) : (
+                <>
+                  <Copy size={16} />
+                  Duplicate Plan
                 </>
               )}
             </Button>

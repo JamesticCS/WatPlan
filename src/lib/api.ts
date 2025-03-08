@@ -112,6 +112,16 @@ export async function deletePlan(id: string): Promise<ApiResponse<{ success: boo
   });
 }
 
+export async function duplicatePlan(id: string, data: { name: string }): Promise<ApiResponse<{ plan: Plan }>> {
+  return fetchApi(`/api/plans/${id}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+}
+
 // Plan Courses API
 export async function getPlanCourses(planId: string): Promise<ApiResponse<{ planCourses: PlanCourse[] }>> {
   return fetchApi(`/api/plans/${planId}/courses`);

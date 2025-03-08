@@ -161,9 +161,13 @@ model Plan {
   created              DateTime     @default(now())
   updated              DateTime     @updatedAt
   academicCalendarYear String?
+  coopSequence         String?      @default("NO_COOP")
+  customTerms          String[]     @default([])
   user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   courses              PlanCourse[]
   degrees              PlanDegree[]
+  
+  @@unique([name, userId])
 }
 
 model PlanCourse {

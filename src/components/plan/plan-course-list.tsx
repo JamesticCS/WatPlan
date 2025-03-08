@@ -17,6 +17,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { PlanTranscriptUpload } from "@/components/plan/plan-transcript-upload";
 
 interface PlanCourseListProps {
   courses: CourseWithStatus[];
@@ -1046,16 +1047,42 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         <div className="border rounded-lg p-4 bg-muted/30 md:col-span-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center">
-              <Button 
-                size="lg" 
-                className="gap-2 shadow-sm font-medium"
-                onClick={() => {}}
-              >
-                <PlusIcon className="h-4 w-4" />
-                Add Program
-              </Button>
+              <PlanTranscriptUpload 
+                planId={planId}
+                onCoursesAdded={async () => {
+                  // Refresh the course list after transcript is processed
+                  // Fetch the updated list of courses from the API
+                  try {
+                    const response = await fetch(`/api/plans/${planId}/courses`);
+                    const data = await response.json();
+                    
+                    if (data.planCourses) {
+                      // Map API data to CourseWithStatus format
+                      const updatedCourses = data.planCourses.map(pc => ({
+                        id: pc.id,
+                        courseId: pc.courseId,
+                        courseCode: pc.course.courseCode,
+                        catalogNumber: pc.course.catalogNumber,
+                        title: pc.course.title,
+                        units: pc.course.units,
+                        term: pc.term || "Unscheduled",
+                        termIndex: pc.termIndex,
+                        status: pc.status,
+                        grade: pc.grade
+                      }));
+                      
+                      // Update state with the refreshed courses
+                      setCourses(updatedCourses);
+                    }
+                  } catch (error) {
+                    console.error("Error refreshing courses after transcript upload:", error);
+                    // Still make a state update to trigger rerender
+                    setCourses([...courses]);
+                  }
+                }}
+              />
               <span className="ml-2 text-sm text-muted-foreground">
-                Add a major, minor, option, or specialization
+                Upload your transcript to automatically add completed courses
               </span>
             </div>
           </div>
@@ -1349,9 +1376,21 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                     </div>
                     <div className="text-sm text-muted-foreground truncate">{course.title}</div>
                     <div className="flex items-center justify-between mt-2">
-                      <div className="text-sm">
-                        {course.units} units
-                        {course.grade && <span className="ml-2">Grade: {course.grade}</span>}
+                      <div className="text-sm flex items-center gap-2">
+                        <span>{course.units} units</span>
+                        {course.grade && (
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-medium 
+                            ${parseFloat(course.grade) >= 80 || course.grade === 'A+' || course.grade === 'A' ? 
+                              'bg-green-100 text-green-800' : 
+                              parseFloat(course.grade) >= 70 || course.grade === 'B+' || course.grade === 'B' ? 
+                                'bg-blue-100 text-blue-800' : 
+                                parseFloat(course.grade) >= 60 || course.grade === 'C+' || course.grade === 'C' ? 
+                                  'bg-yellow-100 text-yellow-800' : 
+                                  'bg-red-100 text-red-800'
+                            }`}>
+                            Grade: {course.grade}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-1">
                         <Button 
@@ -1516,7 +1555,19 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                   </div>
                   <div className="text-sm text-muted-foreground">{course.title}</div>
                   {course.grade && (
-                    <div className="text-sm mt-1">Grade: {course.grade}</div>
+                    <div className="text-sm mt-1">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium 
+                        ${parseFloat(course.grade) >= 80 || course.grade === 'A+' || course.grade === 'A' ? 
+                          'bg-green-100 text-green-800' : 
+                          parseFloat(course.grade) >= 70 || course.grade === 'B+' || course.grade === 'B' ? 
+                            'bg-blue-100 text-blue-800' : 
+                            parseFloat(course.grade) >= 60 || course.grade === 'C+' || course.grade === 'C' ? 
+                              'bg-yellow-100 text-yellow-800' : 
+                              'bg-red-100 text-red-800'
+                        }`}>
+                        Grade: {course.grade}
+                      </span>
+                    </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-3 sm:mt-0">

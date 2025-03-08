@@ -1,6 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+// POST /api/courses - Create a new course
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    
+    // Validate required fields
+    if (!body.courseCode || !body.catalogNumber || !body.title) {
+      return NextResponse.json(
+        { error: 'Missing required fields: courseCode, catalogNumber, title' },
+        { status: 400 }
+      );
+    }
+    
+    // Check if course already exists
+    const existingCourse = await prisma.course.findUnique({
+      where: {
+        courseCode_catalogNumber: {
+          courseCode: body.courseCode.toUpperCase(),
+          catalogNumber: body.catalogNumber
+        }
+      }
+    });
+    
+    if (existingCourse) {
+      return NextResponse.json(existingCourse);
+    }
+    
+    // Create new course
+    const newCourse = await prisma.course.create({
+      data: {
+        courseCode: body.courseCode.toUpperCase(),
+        catalogNumber: body.catalogNumber,
+        title: body.title,
+        description: body.description || `${body.courseCode} ${body.catalogNumber} course`,
+        units: body.units || 0.5,
+        prerequisites: body.prerequisites || null,
+        corequisites: body.corequisites || null,
+        antirequisites: body.antirequisites || null
+      }
+    });
+    
+    return NextResponse.json(newCourse);
+  } catch (error) {
+    console.error('Error creating course:', error);
+    return NextResponse.json(
+      { error: 'Failed to create course' },
+      { status: 500 }
+    );
+  }
+}
+
 // GET /api/courses - Get all courses
 export async function GET(request: NextRequest) {
   try {

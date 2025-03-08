@@ -7,8 +7,9 @@ import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 // POST /api/plans/[id]/courses - Add a course to a plan
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const { params } = context;
   try {
     const session = await getServerSession(authOptions);
     
@@ -125,8 +126,9 @@ export async function POST(
 // GET /api/plans/[id]/courses - Get all courses in a plan
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
+  const { params } = context;
   try {
     const session = await getServerSession(authOptions);
     
