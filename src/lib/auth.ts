@@ -37,6 +37,11 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
+        // Check for email verification status if not a guest
+        if (!user.isGuest && !user.emailVerified) {
+          throw new Error("EMAIL_NOT_VERIFIED");
+        }
+
         const passwordMatch = await bcrypt.compare(
           credentials.password,
           user.password
@@ -92,9 +97,17 @@ export const authOptions: NextAuthOptions = {
       }
       return token;
     },
+    async redirect({ url, baseUrl }) {
+      // Customize redirect behavior for better session restoration
+      // This helps prevent the initial loading issue with auth
+      if (url.startsWith(baseUrl)) return url;
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      return baseUrl;
+    }
   },
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
