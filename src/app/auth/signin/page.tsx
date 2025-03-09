@@ -12,8 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { motion } from "framer-motion";
 
-// Interactive particle system with mouse interaction
+// Interactive particle system with mouse interaction and performance optimizations
 const InteractiveParticleBackground = () => {
+  const [isInitialized, setIsInitialized] = useState(false);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [particles, setParticles] = useState<Array<{
     id: number;
@@ -26,45 +27,76 @@ const InteractiveParticleBackground = () => {
     opacity: number;
   }>>([]);
   
-  // Generate particles once on component mount
+  // Delayed initialization to prevent blocking UI
   useEffect(() => {
-    const colors = [
-      "bg-gradient-to-br from-primary/70 to-amber-300/70",
-      "bg-gradient-to-br from-blue-500/70 to-indigo-400/70",
-      "bg-gradient-to-br from-indigo-500/70 to-purple-400/70",
-      "bg-gradient-to-br from-purple-500/70 to-pink-400/70",
-      "bg-gradient-to-br from-primary/70 to-yellow-300/70"
-    ];
+    // Defer particle initialization to avoid initial UI blocking
+    const initTimer = setTimeout(() => {
+      const colors = [
+        "bg-gradient-to-br from-primary/70 to-amber-300/70",
+        "bg-gradient-to-br from-blue-500/70 to-indigo-400/70",
+        "bg-gradient-to-br from-indigo-500/70 to-purple-400/70",
+        "bg-gradient-to-br from-purple-500/70 to-pink-400/70",
+        "bg-gradient-to-br from-primary/70 to-yellow-300/70"
+      ];
+      
+      // Start with fewer particles for better initial performance
+      const initialCount = typeof window !== 'undefined' && window.innerWidth < 768 ? 40 : 60;
+      
+      const particlesArray = Array.from({ length: initialCount }, (_, i) => ({
+        id: i,
+        size: Math.floor(Math.random() * 18) + 8, // Mix of different sized particles
+        color: colors[Math.floor(Math.random() * colors.length)],
+        x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1000),
+        y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1000),
+        vx: (Math.random() - 0.5) * 1.2, // Slightly reduced initial velocity for performance
+        vy: (Math.random() - 0.5) * 1.2,
+        opacity: Math.random() * 0.5 + 0.3 // Semi-transparent particles
+      }));
+      
+      setParticles(particlesArray);
+      setIsInitialized(true);
+    }, 100); // Short delay to allow UI to render first
     
-    // Create more particles for a more impressive effect
-    const particlesArray = Array.from({ length: 80 }, (_, i) => ({
-      id: i,
-      size: Math.floor(Math.random() * 18) + 8, // Mix of different sized particles
-      color: colors[Math.floor(Math.random() * colors.length)],
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      vx: (Math.random() - 0.5) * 1.5, // Faster random velocity for x-axis
-      vy: (Math.random() - 0.5) * 1.5, // Faster random velocity for y-axis
-      opacity: Math.random() * 0.5 + 0.3 // Semi-transparent particles
-    }));
-    
-    setParticles(particlesArray);
+    return () => clearTimeout(initTimer);
   }, []);
   
-  // Update mouse position for particle interaction
+  // Update mouse position for particle interaction - with throttling
   useEffect(() => {
+    if (!isInitialized) return;
+    
+    let lastMoveTime = 0;
+    const THROTTLE_MS = 16; // ~60fps
+    
     const handleMouseMove = (e: MouseEvent) => {
+      const now = performance.now();
+      if (now - lastMoveTime < THROTTLE_MS) return;
+      
+      lastMoveTime = now;
       setMousePosition({ x: e.clientX, y: e.clientY });
     };
     
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
     return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  }, [isInitialized]);
   
-  // Animation frame to update particle positions
+  // Animation frame to update particle positions with performance optimizations
   useEffect(() => {
+    if (!isInitialized) return;
+    
     let animationFrameId: number;
-    const animateParticles = () => {
+    let lastFrameTime = 0;
+    const TARGET_FPS = 60;
+    const FRAME_MIN_TIME = 1000 / TARGET_FPS;
+    
+    const animateParticles = (timestamp: number) => {
+      // Throttle frame rate for consistent performance
+      if (timestamp - lastFrameTime < FRAME_MIN_TIME) {
+        animationFrameId = requestAnimationFrame(animateParticles);
+        return;
+      }
+      
+      lastFrameTime = timestamp;
+      
       setParticles(prevParticles => {
         return prevParticles.map(particle => {
           // Calculate distance from mouse
@@ -95,14 +127,17 @@ const InteractiveParticleBackground = () => {
           // Faster upward movement
           vy -= 0.03;
           
-          // Boundary checking - wrap around the screen
+          // Boundary checking - wrap around the screen with safe access to window
+          const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
+          const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 1000;
+          
           let newX = particle.x + vx;
           let newY = particle.y + vy;
           
-          if (newX < -100) newX = window.innerWidth + 100;
-          if (newX > window.innerWidth + 100) newX = -100;
-          if (newY < -100) newY = window.innerHeight + 100;
-          if (newY > window.innerHeight + 100) newY = -100;
+          if (newX < -100) newX = windowWidth + 100;
+          if (newX > windowWidth + 100) newX = -100;
+          if (newY < -100) newY = windowHeight + 100;
+          if (newY > windowHeight + 100) newY = -100;
           
           return {
             ...particle,
@@ -118,8 +153,12 @@ const InteractiveParticleBackground = () => {
     };
     
     animationFrameId = requestAnimationFrame(animateParticles);
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [mousePosition]);
+    return () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [mousePosition, isInitialized]);
   
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
