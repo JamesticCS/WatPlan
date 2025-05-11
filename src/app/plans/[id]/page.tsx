@@ -11,6 +11,7 @@ import { PlanCourseList } from "@/components/plan/plan-course-list";
 import { PlanRequirements } from "@/components/plan/plan-requirements";
 import { PlanAddProgram } from "@/components/plan/plan-add-program";
 import { PlanAcademicCalendar } from "@/components/plan/plan-academic-calendar";
+import { BetaNotification } from "@/components/layout/beta-notification";
 import { CourseWithStatus, Plan, PlanCourse, Requirement, DegreeType } from "@/types";
 import { useEffect, useState } from "react";
 import { getPlan, removeDegreeFromPlan, updateAllPlanRequirements } from "@/lib/api";
@@ -558,6 +559,8 @@ export default function PlanDetailPage() {
                 </Card>
               </div>
             </div>
+            {/* Beta Notification Dialog */}
+            <BetaNotification planId={planId} />
           </>
         )}
       </div>
