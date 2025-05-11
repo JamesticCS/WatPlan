@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signIn, signOut, useSession } from "next-auth/react";
+import { AboutDialog } from "@/components/layout/about-dialog";
 
 export function Navbar() {
   const { data: session } = useSession();
@@ -18,35 +19,23 @@ export function Navbar() {
           </Link>
         </div>
         <div className="flex flex-1 items-center justify-between space-x-6 md:justify-end">
-          <nav className="flex items-center space-x-6">
+          <nav className="flex items-center space-x-4">
+            {/* About dialog is always visible */}
+            <AboutDialog />
+            
+            {/* My Plans link only when signed in */}
             {session && (
-              <>
-                <Link 
-                  href="/plans" 
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    pathname === "/plans" ? "text-primary font-semibold" : "text-foreground/80"
-                  }`}
-                >
-                  My Plans
-                </Link>
-                <Link 
-                  href="/courses" 
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    pathname === "/courses" ? "text-primary font-semibold" : "text-foreground/80"
-                  }`}
-                >
-                  Courses
-                </Link>
-                <Link 
-                  href="/programs" 
-                  className={`text-sm font-medium transition-colors hover:text-primary ${
-                    pathname === "/programs" ? "text-primary font-semibold" : "text-foreground/80"
-                  }`}
-                >
-                  Programs
-                </Link>
-              </>
+              <Link 
+                href="/plans" 
+                className={`text-sm font-medium transition-colors hover:text-primary ${
+                  pathname === "/plans" ? "text-primary font-semibold" : "text-foreground/80"
+                }`}
+              >
+                My Plans
+              </Link>
             )}
+            
+            {/* Sign in/out button */}
             {session ? (
               <Button 
                 variant="default" 
