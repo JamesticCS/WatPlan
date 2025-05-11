@@ -19,6 +19,9 @@
 # misc
 .DS_Store
 *.pem
+CLAUDE.md
+transcript.pdf
+logs/
 
 # debug
 npm-debug.log*
