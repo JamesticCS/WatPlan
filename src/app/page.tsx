@@ -91,7 +91,7 @@ export default function Home() {
                   Plan your academic journey with confidence. Track your progress, explore courses, and ensure you meet all your degree requirements in one place.
                 </p>
               </div>
-              <div className="animate-slideUp animate-delay-300">
+              <div className="animate-slideUp animate-delay-300 flex flex-col md:flex-row gap-4">
                 <Button
                   size="lg"
                   className="h-14 px-10 text-lg font-medium bg-primary text-black hover:bg-primary/90 dark:hover:bg-primary/80 dark:text-black shadow-lg hover:shadow-primary/20 transition-all duration-300"
@@ -102,12 +102,25 @@ export default function Home() {
                 >
                   Sign In to Get Started
                 </Button>
+                <Button
+                  size="lg"
+                  className="h-14 px-10 text-lg font-medium bg-primary text-black hover:bg-primary/90 dark:hover:bg-primary/80 dark:text-black shadow-lg hover:shadow-primary/20 transition-all duration-300"
+                  onClick={() => {
+                    // Scroll to the "How WatPlan Works" section
+                    document.getElementById('how-watplan-works')?.scrollIntoView({ 
+                      behavior: 'smooth',
+                      block: 'start'
+                    });
+                  }}
+                >
+                  Learn More
+                </Button>
               </div>
             </div>
           </div>
         </section>
         
-        <section className="w-full py-16 md:py-24 bg-white dark:bg-black relative overflow-hidden">
+        <section id="how-watplan-works" className="w-full py-16 md:py-24 bg-white dark:bg-black relative overflow-hidden">
           <div className="absolute inset-0 bg-grid-black/5 dark:bg-grid-white/5 bg-center [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)]"></div>
           <div className="container px-4 md:px-6 relative z-10">
             <h2 className="text-3xl font-bold tracking-tighter md:text-4xl lg:text-5xl text-center mb-16 animate-fadeIn">
@@ -230,10 +243,10 @@ export default function Home() {
               </p>
             </div>
             <nav className="flex gap-6">
-              <Link className="text-sm text-gray-600 hover:text-primary dark:text-amber-100/60 dark:hover:text-primary transition-colors" href="#">
+              <Link className="text-sm text-gray-600 hover:text-primary dark:text-amber-100/60 dark:hover:text-primary transition-colors" href="/terms">
                 Terms of Service
               </Link>
-              <Link className="text-sm text-gray-600 hover:text-primary dark:text-amber-100/60 dark:hover:text-primary transition-colors" href="#">
+              <Link className="text-sm text-gray-600 hover:text-primary dark:text-amber-100/60 dark:hover:text-primary transition-colors" href="/privacy">
                 Privacy
               </Link>
             </nav>
