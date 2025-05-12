@@ -1,6 +1,5 @@
 "use client";
 
-import { Navbar } from "@/components/layout/navbar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,181 +10,6 @@ import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { motion } from "framer-motion";
 
-// Interactive particle system with mouse interaction and performance optimizations
-const InteractiveParticleBackground = () => {
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-  const [particles, setParticles] = useState<Array<{
-    id: number;
-    size: number;
-    color: string;
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    opacity: number;
-  }>>([]);
-  
-  // Delayed initialization to prevent blocking UI
-  useEffect(() => {
-    // Defer particle initialization to avoid initial UI blocking
-    const initTimer = setTimeout(() => {
-      const colors = [
-        "bg-gradient-to-br from-primary/70 to-amber-300/70",
-        "bg-gradient-to-br from-blue-500/70 to-indigo-400/70",
-        "bg-gradient-to-br from-indigo-500/70 to-purple-400/70",
-        "bg-gradient-to-br from-purple-500/70 to-pink-400/70",
-        "bg-gradient-to-br from-primary/70 to-yellow-300/70"
-      ];
-      
-      // Start with fewer particles for better initial performance
-      const initialCount = typeof window !== 'undefined' && window.innerWidth < 768 ? 40 : 60;
-      
-      const particlesArray = Array.from({ length: initialCount }, (_, i) => ({
-        id: i,
-        size: Math.floor(Math.random() * 18) + 8, // Mix of different sized particles
-        color: colors[Math.floor(Math.random() * colors.length)],
-        x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 1000),
-        y: Math.random() * (typeof window !== 'undefined' ? window.innerHeight : 1000),
-        vx: (Math.random() - 0.5) * 1.2, // Slightly reduced initial velocity for performance
-        vy: (Math.random() - 0.5) * 1.2,
-        opacity: Math.random() * 0.5 + 0.3 // Semi-transparent particles
-      }));
-      
-      setParticles(particlesArray);
-      setIsInitialized(true);
-    }, 100); // Short delay to allow UI to render first
-    
-    return () => clearTimeout(initTimer);
-  }, []);
-  
-  // Update mouse position for particle interaction - with throttling
-  useEffect(() => {
-    if (!isInitialized) return;
-    
-    let lastMoveTime = 0;
-    const THROTTLE_MS = 16; // ~60fps
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      const now = performance.now();
-      if (now - lastMoveTime < THROTTLE_MS) return;
-      
-      lastMoveTime = now;
-      setMousePosition({ x: e.clientX, y: e.clientY });
-    };
-    
-    window.addEventListener('mousemove', handleMouseMove, { passive: true });
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [isInitialized]);
-  
-  // Animation frame to update particle positions with performance optimizations
-  useEffect(() => {
-    if (!isInitialized) return;
-    
-    let animationFrameId: number;
-    let lastFrameTime = 0;
-    const TARGET_FPS = 60;
-    const FRAME_MIN_TIME = 1000 / TARGET_FPS;
-    
-    const animateParticles = (timestamp: number) => {
-      // Throttle frame rate for consistent performance
-      if (timestamp - lastFrameTime < FRAME_MIN_TIME) {
-        animationFrameId = requestAnimationFrame(animateParticles);
-        return;
-      }
-      
-      lastFrameTime = timestamp;
-      
-      setParticles(prevParticles => {
-        return prevParticles.map(particle => {
-          // Calculate distance from mouse
-          const dx = mousePosition.x - particle.x;
-          const dy = mousePosition.y - particle.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          
-          // Apply force based on mouse position (attraction)
-          let vx = particle.vx;
-          let vy = particle.vy;
-          
-          if (distance < 250) {
-            // Stronger repel when close
-            const forceFactor = 0.4;
-            vx -= (dx / distance) * forceFactor;
-            vy -= (dy / distance) * forceFactor;
-          } else if (distance < 500) {
-            // Stronger attract at medium distance
-            const forceFactor = 0.12;
-            vx += (dx / distance) * forceFactor;
-            vy += (dy / distance) * forceFactor;
-          }
-          
-          // Less damping for more responsive movement
-          vx = vx * 0.96;
-          vy = vy * 0.96;
-          
-          // Faster upward movement
-          vy -= 0.03;
-          
-          // Boundary checking - wrap around the screen with safe access to window
-          const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 1000;
-          const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 1000;
-          
-          let newX = particle.x + vx;
-          let newY = particle.y + vy;
-          
-          if (newX < -100) newX = windowWidth + 100;
-          if (newX > windowWidth + 100) newX = -100;
-          if (newY < -100) newY = windowHeight + 100;
-          if (newY > windowHeight + 100) newY = -100;
-          
-          return {
-            ...particle,
-            x: newX,
-            y: newY,
-            vx,
-            vy
-          };
-        });
-      });
-      
-      animationFrameId = requestAnimationFrame(animateParticles);
-    };
-    
-    animationFrameId = requestAnimationFrame(animateParticles);
-    return () => {
-      if (animationFrameId) {
-        cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [mousePosition, isInitialized]);
-  
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((particle) => (
-        <motion.div
-          key={particle.id}
-          className={`absolute rounded-full ${particle.color} shadow-lg backdrop-blur-sm`}
-          style={{
-            height: particle.size,
-            width: particle.size,
-            x: particle.x,
-            y: particle.y,
-            opacity: particle.opacity,
-          }}
-          animate={{
-            scale: [0.8, 1.2, 0.8],
-            rotate: [0, 360],
-          }}
-          transition={{
-            duration: Math.random() * 15 + 15, // Faster rotation
-            repeat: Infinity,
-            ease: "linear"
-          }}
-        />
-      ))}
-    </div>
-  );
-};
 
 // Enhanced field animation variants
 const fieldVariants = {
@@ -243,26 +67,7 @@ export default function SignUpPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen overflow-hidden relative">
-      <Navbar />
-      
-      {/* Animated background */}
-      <div className="absolute inset-0 overflow-hidden bg-gradient-to-b from-blue-50 to-amber-50 dark:from-blue-950 dark:to-amber-950">
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-primary/10 animate-flow"></div>
-        
-        {/* Grid pattern */}
-        <div className="absolute inset-0 bg-grid-black dark:bg-grid-white opacity-[0.2] dark:opacity-[0.2]"></div>
-        
-        {/* Interactive Particles */}
-        <InteractiveParticleBackground />
-        
-        {/* Large blurred shapes */}
-        <div className="absolute -left-48 -top-48 w-96 h-96 rounded-full bg-primary/30 dark:bg-primary/20 blur-3xl"></div>
-        <div className="absolute -right-48 bottom-0 w-96 h-96 rounded-full bg-blue-500/30 dark:bg-blue-500/20 blur-3xl"></div>
-        <div className="absolute left-1/3 top-1/3 w-72 h-72 rounded-full bg-purple-500/20 blur-3xl"></div>
-      </div>
-      
+    <div className="flex flex-col min-h-screen overflow-hidden relative">      
       <main className="flex-1 container flex items-center justify-center py-10 relative z-10">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -270,7 +75,7 @@ export default function SignUpPage() {
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          <Card className="w-full backdrop-blur-sm bg-white/90 dark:bg-slate-900/90 border border-white/50 dark:border-slate-800/50 shadow-xl">
+          <Card className="w-full backdrop-blur-sm bg-white/95 dark:bg-slate-900/95 border border-white/60 dark:border-slate-800/60 shadow-xl">
             {isRegistered ? (
               <>
                 <CardHeader className="space-y-1">
@@ -383,7 +188,7 @@ export default function SignUpPage() {
                     transition={{ duration: 0.5 }}
                   >
                     <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-amber-400 dark:from-primary dark:to-amber-300 bg-clip-text text-transparent pb-1">Create an account</CardTitle>
-                    <CardDescription className="text-slate-700 dark:text-slate-300">
+                    <CardDescription className="text-slate-800 dark:text-slate-200">
                       Enter your details below to create your WatPlan account
                     </CardDescription>
                   </motion.div>
@@ -397,7 +202,7 @@ export default function SignUpPage() {
                       animate="visible"
                       custom={1}
                     >
-                      <label htmlFor="email" className="text-sm font-medium flex items-center gap-2">
+                      <label htmlFor="email" className="text-sm font-medium flex items-center gap-2 text-slate-800 dark:text-slate-200">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
                           <path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z" />
                           <polyline points="15,9 18,9 18,11" />
@@ -413,7 +218,7 @@ export default function SignUpPage() {
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="Your email address"
                         required
-                        className="bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300"
+                        className="bg-white/90 dark:bg-slate-900/90 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
                       />
                     </motion.div>
                     <motion.div 
@@ -423,7 +228,7 @@ export default function SignUpPage() {
                       animate="visible"
                       custom={2}
                     >
-                      <label htmlFor="password" className="text-sm font-medium flex items-center gap-2">
+                      <label htmlFor="password" className="text-sm font-medium flex items-center gap-2 text-slate-800 dark:text-slate-200">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
                           <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
                           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -438,7 +243,7 @@ export default function SignUpPage() {
                         placeholder="Create a password"
                         required
                         minLength={8}
-                        className="bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300"
+                        className="bg-white/90 dark:bg-slate-900/90 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
                       />
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         Password must be at least 8 characters

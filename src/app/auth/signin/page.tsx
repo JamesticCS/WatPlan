@@ -88,7 +88,7 @@ export default function SignInPage() {
           transition={{ duration: 0.5 }}
           className="w-full max-w-md"
         >
-          <Card className="w-full backdrop-blur-sm bg-white/90 dark:bg-slate-900/90 border border-white/50 dark:border-slate-800/50 shadow-xl">
+          <Card className="w-full backdrop-blur-sm bg-white/95 dark:bg-slate-900/95 border border-white/60 dark:border-slate-800/60 shadow-xl">
             {verificationNeeded ? (
               <>
                 <CardHeader className="space-y-1">
@@ -269,7 +269,7 @@ export default function SignInPage() {
                     transition={{ duration: 0.5 }}
                   >
                     <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-amber-400 dark:from-primary dark:to-amber-300 bg-clip-text text-transparent pb-1">Welcome to WatPlan</CardTitle>
-                    <CardDescription className="text-slate-700 dark:text-slate-300">
+                    <CardDescription className="text-slate-800 dark:text-slate-200">
                       Sign in to your account to create and manage your degree plans
                     </CardDescription>
                   </motion.div>
@@ -331,7 +331,7 @@ export default function SignInPage() {
                     custom={3}
                   >
                     <div className="space-y-2">
-                      <label htmlFor="email" className="text-sm font-medium flex items-center gap-2">
+                      <label htmlFor="email" className="text-sm font-medium flex items-center gap-2 text-slate-800 dark:text-slate-200">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
                           <path d="M22 17a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5C2 7 4 5 6.5 5H18c2.2 0 4 1.8 4 4v8Z" />
                           <polyline points="15,9 18,9 18,11" />
@@ -347,11 +347,11 @@ export default function SignInPage() {
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="your.email@example.com"
                         required
-                        className="bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300"
+                        className="bg-white/90 dark:bg-slate-900/90 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label htmlFor="password" className="text-sm font-medium flex items-center gap-2">
+                      <label htmlFor="password" className="text-sm font-medium flex items-center gap-2 text-slate-800 dark:text-slate-200">
                         <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
                           <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
                           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -365,7 +365,7 @@ export default function SignInPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
                         required
-                        className="bg-white dark:bg-slate-900 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300"
+                        className="bg-white/90 dark:bg-slate-900/90 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
                       />
                     </div>
                     <Button 

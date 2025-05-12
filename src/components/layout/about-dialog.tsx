@@ -23,12 +23,9 @@ export function AboutDialog() {
       </DialogTrigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
-          <DialogTitle className="text-xl">About the Creator</DialogTitle>
-          <DialogDescription>
-            WatPlan was created to help University of Waterloo students plan their degrees
-          </DialogDescription>
+          <DialogTitle className="text-xl text-center">About the Creator</DialogTitle>
         </DialogHeader>
-        <div className="py-4 flex flex-col items-center md:flex-row md:items-start gap-6">
+        <div className="py-4 flex flex-col items-center gap-6">
           <div className="flex-shrink-0">
             <Image
               src="/profile.png"
@@ -39,14 +36,14 @@ export function AboutDialog() {
               priority
             />
           </div>
-          <div className="flex-1 space-y-4">
-            <h3 className="text-lg font-semibold text-center md:text-left">Jesse Hines</h3>
+          <div className="flex-1 space-y-4 text-center">
+            <h3 className="text-lg font-semibold">Jesse Hines</h3>
             <p className="text-sm text-muted-foreground">
               I'm a mathematics student at the University of Waterloo with a passion for building 
               software that solves real problems. WatPlan was created to simplify the complex process 
               of degree planning for UWaterloo students.
             </p>
-            <div className="flex flex-wrap gap-4 justify-center md:justify-start">
+            <div className="flex flex-wrap gap-4 justify-center">
               <Link 
                 href="https://github.com/JamesticCS" 
                 target="_blank" 
