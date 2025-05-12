@@ -1,13 +1,40 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { CheckCircle, XCircle, Loader2 } from "lucide-react";
 
+// Default export with Suspense boundary
 export default function VerifyPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col min-h-screen">
+        <main className="flex-1 container flex items-center justify-center py-10">
+          <Card className="w-full max-w-md">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl">Email Verification</CardTitle>
+              <CardDescription>Loading verification page...</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 flex flex-col items-center pt-4">
+              <div className="flex flex-col items-center space-y-4 py-8">
+                <Loader2 className="h-16 w-16 text-blue-500 animate-spin" />
+                <p className="text-center text-muted-foreground">Loading verification page...</p>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    }>
+      <VerifyPageContent />
+    </Suspense>
+  );
+}
+
+// Component with useSearchParams requires Suspense
+function VerifyPageContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Verifying your email...');
   const searchParams = useSearchParams();
