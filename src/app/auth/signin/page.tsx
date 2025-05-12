@@ -79,36 +79,12 @@ export default function SignInPage() {
     }
   };
 
-  // Enhanced OAuth sign-in with error handling
-  const handleOAuthSignIn = async (provider: string) => {
+  // Simple direct OAuth sign-in
+  const handleOAuthSignIn = (provider: string) => {
     setIsLoading(true);
-    try {
-      const result = await signIn(provider, { 
-        callbackUrl: "/plans",
-        redirect: false
-      });
-      
-      if (result?.error) {
-        console.error(`OAuth sign-in error (${provider}):`, result.error);
-        toast({
-          title: "Authentication Error",
-          description: `Failed to sign in with ${provider}. Please try again.`,
-          variant: "destructive",
-        });
-        setIsLoading(false);
-      } else {
-        // Successful authentication will redirect automatically
-        window.location.href = result?.url || "/plans";
-      }
-    } catch (error) {
-      console.error(`OAuth sign-in error (${provider}):`, error);
-      toast({
-        title: "Authentication Error",
-        description: `Failed to sign in with ${provider}. Please try again.`,
-        variant: "destructive",
-      });
-      setIsLoading(false);
-    }
+    // Use direct redirect for now since handling errors
+    // seems to be causing more problems than it solves
+    signIn(provider, { callbackUrl: "/plans" });
   };
 
   return (

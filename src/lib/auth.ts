@@ -31,6 +31,13 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_ID ?? "",
       clientSecret: process.env.GOOGLE_SECRET ?? "",
       allowDangerousEmailAccountLinking: true,
+      authorization: {
+        params: {
+          prompt: "select_account",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
     }),
     CredentialsProvider({
       name: "credentials",
@@ -92,63 +99,29 @@ export const authOptions: NextAuthOptions = {
     error: "/auth/error",
   },
   callbacks: {
-    async signIn({ user, account, profile }) {
-      // Log sign in attempts
-      authLogger.log(`Sign in attempt for ${user?.email || 'unknown user'} with ${account?.provider || 'unknown provider'}`);
-      
-      if (!user || !account) {
-        authLogger.error('SignIn callback received incomplete data', { user, account });
-        return false;
-      }
-      
-      return true;
-    },
     async session({ session, user, token }) {
-      authLogger.log(`Session callback for ${session?.user?.email || 'unknown user'}`);
-      
+      // Keep this simple for now - just add the user ID and guest status to the session
       if (session.user) {
         if (user) {
           session.user.id = user.id;
           session.user.isGuest = user.isGuest || false;
         } else if (token) {
-          // When using JWT strategy
           session.user.id = token.sub as string;
           session.user.isGuest = token.isGuest as boolean || false;
         }
       }
       return session;
     },
-    async jwt({ token, user, account }) {
-      if (account) {
-        authLogger.log(`JWT callback for ${account.provider} authentication`);
-      }
-      
+    async jwt({ token, user }) {
+      // Just preserve the user's guest status in the token
       if (user) {
         token.isGuest = user.isGuest || false;
       }
-      
-      // Store additional info from OAuth providers
-      if (account?.provider) {
-        token.provider = account.provider;
-      }
-      
       return token;
     },
     async redirect({ url, baseUrl }) {
-      authLogger.log(`Redirect callback from ${url}`);
-      
-      // Ensure we always redirect to the plans page after OAuth login
-      // This helps overcome issues with callback redirection
-      if (url.startsWith('/api/auth/callback')) {
-        const redirectUrl = `${baseUrl}/plans`;
-        authLogger.log(`Redirecting OAuth callback to ${redirectUrl}`);
-        return redirectUrl;
-      }
-      
-      // Standard redirect logic
-      if (url.startsWith(baseUrl)) return url;
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
-      return baseUrl;
+      // Always redirect to /plans for simplicity
+      return `${baseUrl}/plans`;
     }
   },
   session: {
