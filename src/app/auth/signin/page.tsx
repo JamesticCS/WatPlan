@@ -79,6 +79,38 @@ export default function SignInPage() {
     }
   };
 
+  // Enhanced OAuth sign-in with error handling
+  const handleOAuthSignIn = async (provider: string) => {
+    setIsLoading(true);
+    try {
+      const result = await signIn(provider, { 
+        callbackUrl: "/plans",
+        redirect: false
+      });
+      
+      if (result?.error) {
+        console.error(`OAuth sign-in error (${provider}):`, result.error);
+        toast({
+          title: "Authentication Error",
+          description: `Failed to sign in with ${provider}. Please try again.`,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+      } else {
+        // Successful authentication will redirect automatically
+        window.location.href = result?.url || "/plans";
+      }
+    } catch (error) {
+      console.error(`OAuth sign-in error (${provider}):`, error);
+      toast({
+        title: "Authentication Error",
+        description: `Failed to sign in with ${provider}. Please try again.`,
+        variant: "destructive",
+      });
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen overflow-hidden relative">      
       <main className="flex-1 container flex items-center justify-center py-10 relative z-10">
@@ -285,7 +317,7 @@ export default function SignInPage() {
                   >
                     <Button 
                       variant="outline" 
-                      onClick={() => signIn("github", { callbackUrl: "/plans" })}
+                      onClick={() => handleOAuthSignIn("github")}
                       className="flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all duration-300 py-6 text-slate-700 dark:text-slate-300"
                       disabled={isLoading}
                     >
@@ -294,7 +326,7 @@ export default function SignInPage() {
                     </Button>
                     <Button 
                       variant="outline" 
-                      onClick={() => signIn("google", { callbackUrl: "/plans" })}
+                      onClick={() => handleOAuthSignIn("google")}
                       className="flex items-center justify-center gap-2 bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700 transition-all duration-300 py-6 text-slate-700 dark:text-slate-300"
                       disabled={isLoading}
                     >

@@ -7,16 +7,30 @@ import { prisma } from "./prisma";
 import bcrypt from "bcrypt";
 import { randomUUID } from "crypto";
 
+// Logger helper for authentication events
+const authLogger = {
+  log: (message: string) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[AUTH] ${message}`);
+    }
+  },
+  error: (message: string, err?: any) => {
+    console.error(`[AUTH ERROR] ${message}`, err || '');
+  }
+};
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     GithubProvider({
       clientId: process.env.GITHUB_ID ?? "",
       clientSecret: process.env.GITHUB_SECRET ?? "",
+      allowDangerousEmailAccountLinking: true,
     }),
     GoogleProvider({
       clientId: process.env.GOOGLE_ID ?? "",
       clientSecret: process.env.GOOGLE_SECRET ?? "",
+      allowDangerousEmailAccountLinking: true,
     }),
     CredentialsProvider({
       name: "credentials",
@@ -78,7 +92,20 @@ export const authOptions: NextAuthOptions = {
     error: "/auth/error",
   },
   callbacks: {
+    async signIn({ user, account, profile }) {
+      // Log sign in attempts
+      authLogger.log(`Sign in attempt for ${user?.email || 'unknown user'} with ${account?.provider || 'unknown provider'}`);
+      
+      if (!user || !account) {
+        authLogger.error('SignIn callback received incomplete data', { user, account });
+        return false;
+      }
+      
+      return true;
+    },
     async session({ session, user, token }) {
+      authLogger.log(`Session callback for ${session?.user?.email || 'unknown user'}`);
+      
       if (session.user) {
         if (user) {
           session.user.id = user.id;
@@ -91,15 +118,34 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      if (account) {
+        authLogger.log(`JWT callback for ${account.provider} authentication`);
+      }
+      
       if (user) {
         token.isGuest = user.isGuest || false;
       }
+      
+      // Store additional info from OAuth providers
+      if (account?.provider) {
+        token.provider = account.provider;
+      }
+      
       return token;
     },
     async redirect({ url, baseUrl }) {
-      // Customize redirect behavior for better session restoration
-      // This helps prevent the initial loading issue with auth
+      authLogger.log(`Redirect callback from ${url}`);
+      
+      // Ensure we always redirect to the plans page after OAuth login
+      // This helps overcome issues with callback redirection
+      if (url.startsWith('/api/auth/callback')) {
+        const redirectUrl = `${baseUrl}/plans`;
+        authLogger.log(`Redirecting OAuth callback to ${redirectUrl}`);
+        return redirectUrl;
+      }
+      
+      // Standard redirect logic
       if (url.startsWith(baseUrl)) return url;
       if (url.startsWith("/")) return `${baseUrl}${url}`;
       return baseUrl;
@@ -111,4 +157,6 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
+  // Disable automatic session loading on initial page load
+  useSecureCookies: process.env.NODE_ENV === "production",
 };
