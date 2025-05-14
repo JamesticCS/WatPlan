@@ -33,22 +33,47 @@ async function applyMigration() {
     
     console.log('All emails normalized, applying SQL migration...');
     
-    // Apply the SQL migration
-    exec('npx prisma migrate resolve --applied 20250515_email_case_insensitive', (error, stdout, stderr) => {
-      if (error) {
-        console.error(`Migration execution error: ${error.message}`);
-        return;
-      }
-      
-      if (stderr) {
-        console.error(`Migration stderr: ${stderr}`);
-        return;
-      }
-      
-      console.log('Migration applied successfully!');
-      console.log(`${stdout}`);
+    // Apply the SQL migration directly
+    console.log('Applying SQL migration directly...');
+    
+    // SQL to create a trigger for normalizing emails
+    const sql = `
+    -- First, create a function to handle case-insensitive email comparison
+    CREATE OR REPLACE FUNCTION normalize_email(email TEXT) 
+    RETURNS TEXT AS $$ 
+    BEGIN 
+      RETURN lower(email); 
+    END; 
+    $$ LANGUAGE plpgsql;
+
+    -- Create a trigger function that normalizes email on insert or update
+    CREATE OR REPLACE FUNCTION normalize_email_trigger()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      -- Only normalize if email is not null
+      IF NEW.email IS NOT NULL THEN
+        NEW.email = lower(NEW.email);
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    -- Create a trigger on the User table
+    DROP TRIGGER IF EXISTS normalize_user_email ON "User";
+    CREATE TRIGGER normalize_user_email
+    BEFORE INSERT OR UPDATE ON "User"
+    FOR EACH ROW
+    EXECUTE FUNCTION normalize_email_trigger();
+    `;
+    
+    // Execute the SQL directly
+    try {
+      await prisma.$executeRawUnsafe(sql);
+      console.log('SQL migration applied successfully!');
       console.log('Email addresses are now case-insensitive in the database.');
-    });
+    } catch (sqlError) {
+      console.error('Error applying SQL migration:', sqlError);
+    }
     
   } catch (error) {
     console.error('Error applying migration:', error);
