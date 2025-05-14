@@ -51,6 +51,37 @@ export async function POST(req: NextRequest) {
     console.log("Creating new user...");
     let user;
     try {
+      // First, perform a soft delete of any user with this email that might have been deleted
+      // but is still causing constraint issues
+      const deletedUsers = await prisma.user.findMany({
+        where: {
+          email,
+          // If you have a soft delete flag, you could add it here
+        },
+      });
+      
+      if (deletedUsers.length > 0) {
+        console.log(`Found ${deletedUsers.length} existing users with this email, attempting cleanup...`);
+        
+        // Hard delete these users to clear constraints
+        for (const deletedUser of deletedUsers) {
+          console.log(`Cleaning up user ${deletedUser.id} with email ${deletedUser.email}`);
+          
+          // Delete any verification tokens first
+          await prisma.verificationToken.deleteMany({
+            where: { identifier: deletedUser.id }
+          });
+          
+          // Then delete the user
+          await prisma.user.delete({
+            where: { id: deletedUser.id }
+          });
+        }
+        
+        console.log("Cleanup completed, proceeding with new user creation");
+      }
+      
+      // Now create the new user
       user = await prisma.user.create({
         data: {
           name: email.split('@')[0], // Use the part before @ as the name
@@ -60,12 +91,19 @@ export async function POST(req: NextRequest) {
         },
       });
       console.log("User created:", user.id);
-    } catch (createError) {
+    } catch (createError: any) {
       console.error("Error creating user:", createError);
-      return NextResponse.json(
-        { message: "Failed to create user account. This email might have been used before." },
-        { status: 500 }
-      );
+      
+      let errorMessage = "Failed to create user account.";
+      
+      // Check for unique constraint violation
+      if (createError.code === 'P2002' || 
+          (createError.message && createError.message.includes('Unique constraint'))) {
+        errorMessage = "This email is already registered. Please use a different email or try logging in.";
+        return NextResponse.json({ message: errorMessage }, { status: 409 });
+      }
+      
+      return NextResponse.json({ message: errorMessage }, { status: 500 });
     }
     
     let verificationToken = "";
