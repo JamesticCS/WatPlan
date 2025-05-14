@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { signIn } from "next-auth/react";
 import { FaGithub, FaGoogle } from "react-icons/fa";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -31,8 +31,62 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [verificationNeeded, setVerificationNeeded] = useState(false);
+  const [justVerified, setJustVerified] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+
+  // Check for verified email parameter
+  useEffect(() => {
+    const verified = searchParams.get('verified');
+    const emailParam = searchParams.get('email');
+    
+    if (verified === 'true' && emailParam) {
+      // Set the email field to the verified email
+      setEmail(emailParam);
+      setJustVerified(true);
+      
+      // Show a toast notification
+      toast({
+        title: "Email Verified",
+        description: "Your email has been successfully verified. Please sign in to continue.",
+        variant: "default",
+      });
+    } else {
+      // Also check localStorage for recently verified email
+      try {
+        if (typeof window !== 'undefined') {
+          const storedEmail = localStorage.getItem('verifiedEmail');
+          const verifiedAt = localStorage.getItem('verifiedAt');
+          
+          if (storedEmail && verifiedAt) {
+            // Check if verification was recent (within last 5 minutes)
+            const verifiedTime = new Date(verifiedAt).getTime();
+            const now = new Date().getTime();
+            const fiveMinutesInMs = 5 * 60 * 1000;
+            
+            if (now - verifiedTime < fiveMinutesInMs) {
+              setEmail(storedEmail);
+              setJustVerified(true);
+              
+              // Show a toast notification
+              toast({
+                title: "Email Verified",
+                description: "Your email has been successfully verified. Please sign in to continue.",
+                variant: "default",
+              });
+              
+              // Clear the storage after using it
+              localStorage.removeItem('verifiedEmail');
+              localStorage.removeItem('verifiedAt');
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking localStorage:', error);
+      }
+    }
+  }, [searchParams, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,12 +133,51 @@ export default function SignInPage() {
     }
   };
 
-  // Simple direct OAuth sign-in
-  const handleOAuthSignIn = (provider: string) => {
+  // Enhanced OAuth sign-in with error handling and logging
+  const handleOAuthSignIn = async (provider: string) => {
     setIsLoading(true);
-    // Use direct redirect for now since handling errors
-    // seems to be causing more problems than it solves
-    signIn(provider, { callbackUrl: "/plans" });
+    
+    try {
+      // Log which provider is being used
+      console.log(`[AUTH] Attempting to sign in with ${provider}`);
+      
+      // Use signIn with redirect: false to handle errors
+      const result = await signIn(provider, { 
+        redirect: false,
+        callbackUrl: "/plans"
+      });
+      
+      if (result?.error) {
+        // Log the error
+        console.error(`[AUTH ERROR] ${provider} sign-in failed:`, result.error);
+        
+        // Show error toast
+        toast({
+          title: "Authentication Error",
+          description: `There was a problem signing in with ${provider}. Please try again.`,
+          variant: "destructive",
+        });
+        
+        // If there's a URL, redirect to it (usually the error page)
+        if (result.url) {
+          router.push(result.url);
+        }
+      } else if (result?.url) {
+        // Success case, redirect to the URL
+        console.log(`[AUTH] ${provider} sign-in successful, redirecting to:`, result.url);
+        router.push(result.url);
+      }
+    } catch (error) {
+      // Catch any unexpected errors
+      console.error(`[AUTH ERROR] Unexpected error during ${provider} sign-in:`, error);
+      toast({
+        title: "Authentication Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -357,6 +450,11 @@ export default function SignInPage() {
                           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                         </svg>
                         Password
+                        {justVerified && 
+                          <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                            Verified Email
+                          </span>
+                        }
                       </label>
                       <Input
                         id="password"
@@ -365,8 +463,10 @@ export default function SignInPage() {
                         onChange={(e) => setPassword(e.target.value)}
                         placeholder="••••••••"
                         required
-                        className="bg-white/90 dark:bg-slate-900/90 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400"
-                      />
+                        className={`bg-white/90 dark:bg-slate-900/90 border-gray-300 dark:border-slate-700 focus:border-primary/70 focus:ring-primary/70 transition-all duration-300 text-slate-900 dark:text-white placeholder-slate-500 dark:placeholder-slate-400 ${
+                          justVerified ? 'border-green-500 dark:border-green-700 ring-1 ring-green-500 dark:ring-green-700' : ''
+                        }`}
+                        autoFocus={justVerified} // Focus on password field if user just verified their email
                     </div>
                     <Button 
                       type="submit" 

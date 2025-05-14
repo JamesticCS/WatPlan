@@ -9,7 +9,7 @@
 
 ### OAuth Providers
 - `GITHUB_ID`: Your GitHub OAuth app client ID
-- `GITHUB_SECRET`: Your GitHub OAuth app client secret
+- `GITHUB_CLIENT_SECRET`: Your GitHub OAuth app client secret (renamed from GITHUB_SECRET)
 - `GOOGLE_ID`: Your Google OAuth app client ID
 - `GOOGLE_CLIENT_SECRET`: Your Google OAuth app client secret (renamed from GOOGLE_SECRET)
 
@@ -43,3 +43,17 @@
 3. For testing Google OAuth locally, add these additional URIs in Google Cloud Console:
    - Authorized JavaScript origins: http://localhost:3000
    - Authorized redirect URIs: http://localhost:3000/api/auth/callback/google
+
+### GitHub OAuth Notes
+1. Make sure your GitHub OAuth App configuration includes:
+   - Homepage URL: https://watplan.app
+   - Authorization callback URL: https://watplan.app/api/auth/callback/github
+   
+2. If your GitHub configuration is redirecting back to the sign-in page:
+   - Verify that GITHUB_ID and GITHUB_CLIENT_SECRET are correctly set in environment variables
+   - Check that the callback URL exactly matches what's configured in GitHub OAuth App
+   - Ensure user is granting all required permissions during the authorization flow
+   - Verify there are no cookie restrictions in the user's browser
+
+3. For testing GitHub OAuth locally, update your GitHub OAuth App with:
+   - Authorization callback URL: http://localhost:3000/api/auth/callback/github

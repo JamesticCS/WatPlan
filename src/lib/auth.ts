@@ -24,8 +24,20 @@ export const authOptions: NextAuthOptions = {
   providers: [
     GithubProvider({
       clientId: process.env.GITHUB_ID ?? "",
-      clientSecret: process.env.GITHUB_SECRET ?? "",
+      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? process.env.GITHUB_SECRET ?? "",
       allowDangerousEmailAccountLinking: true,
+      profile(profile) {
+        // Log profile data for debugging (only in development)
+        if (process.env.NODE_ENV === 'development') {
+          authLogger.log(`GitHub profile data: ${JSON.stringify(profile, null, 2)}`);
+        }
+        return {
+          id: profile.id.toString(),
+          name: profile.name || profile.login,
+          email: profile.email,
+          image: profile.avatar_url,
+        };
+      }
     }),
     GoogleProvider({
       clientId: process.env.GOOGLE_ID ?? "",
@@ -112,7 +124,19 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
+      // Enhanced debugging for auth issues
+      if (process.env.NODE_ENV === 'development') {
+        if (account) {
+          authLogger.log(`JWT callback - Account provider: ${account.provider}`);
+          authLogger.log(`JWT callback - Account type: ${account.type}`);
+        }
+        if (user) {
+          authLogger.log(`JWT callback - User ID: ${user.id}`);
+          authLogger.log(`JWT callback - User email: ${user.email}`);
+        }
+      }
+      
       // Just preserve the user's guest status in the token
       if (user) {
         token.isGuest = user.isGuest || false;
@@ -120,6 +144,13 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async redirect({ url, baseUrl }) {
+      // Log redirect for debugging
+      if (process.env.NODE_ENV === 'development') {
+        authLogger.log(`Redirect callback - URL: ${url}`);
+        authLogger.log(`Redirect callback - Base URL: ${baseUrl}`);
+        authLogger.log(`Redirect callback - Final URL: ${baseUrl}/plans`);
+      }
+      
       // Always redirect to /plans for simplicity
       return `${baseUrl}/plans`;
     }
