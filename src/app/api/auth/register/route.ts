@@ -26,13 +26,20 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    const { email, password } = result.data;
-    console.log("Validated email:", email);
+    // Normalize the email: lowercase and trim whitespace
+    const normalizedEmail = result.data.email.toLowerCase().trim();
+    const password = result.data.password;
+    console.log("Validated email:", normalizedEmail);
     
-    // Check if user already exists
+    // Check if user already exists (case-insensitive)
     console.log("Checking if user exists...");
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
+    const existingUser = await prisma.user.findFirst({
+      where: { 
+        email: {
+          mode: 'insensitive',
+          equals: normalizedEmail
+        }
+      },
     });
     
     if (existingUser) {
@@ -52,10 +59,13 @@ export async function POST(req: NextRequest) {
     let user;
     try {
       // First, perform a soft delete of any user with this email that might have been deleted
-      // but is still causing constraint issues
+      // but is still causing constraint issues (using case-insensitive matching)
       const deletedUsers = await prisma.user.findMany({
         where: {
-          email,
+          email: {
+            mode: 'insensitive',
+            equals: normalizedEmail
+          }
           // If you have a soft delete flag, you could add it here
         },
       });
@@ -81,11 +91,11 @@ export async function POST(req: NextRequest) {
         console.log("Cleanup completed, proceeding with new user creation");
       }
       
-      // Now create the new user
+      // Now create the new user with normalized email
       user = await prisma.user.create({
         data: {
-          name: email.split('@')[0], // Use the part before @ as the name
-          email,
+          name: normalizedEmail.split('@')[0], // Use the part before @ as the name
+          email: normalizedEmail, // Use normalized (lowercase, trimmed) email
           password: hashedPassword,
           emailVerified: null, // Explicitly set to null to indicate unverified
         },
@@ -112,14 +122,14 @@ export async function POST(req: NextRequest) {
     try {
       // Generate verification token
       console.log("Generating verification token...");
-      verificationToken = await generateVerificationToken(user.id, email);
+      verificationToken = await generateVerificationToken(user.id, normalizedEmail);
       console.log("Token generated successfully");
       
       // Send verification email
       try {
         console.log("Sending verification email...");
-        await sendVerificationEmail(email, verificationToken);
-        console.log(`Verification email sent to ${email}`);
+        await sendVerificationEmail(normalizedEmail, verificationToken);
+        console.log(`Verification email sent to ${normalizedEmail}`);
         emailSent = true;
       } catch (emailError) {
         console.error("Error sending verification email:", emailError);
