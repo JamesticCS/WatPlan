@@ -14,6 +14,11 @@
 - `GOOGLE_CLIENT_SECRET`: Your Google OAuth app client secret (renamed from GOOGLE_SECRET)
 
 ### Email Service (for Verification)
+#### Option 1: Resend (Recommended)
+- `RESEND_API_KEY`: Your Resend API key from https://resend.com
+- `EMAIL_FROM`: From address for sent emails (e.g., "WatPlan <noreply@watplan.app>")
+
+#### Option 2: SMTP Server (Fallback)
 - `EMAIL_SERVER_HOST`: SMTP server host (e.g., smtp.gmail.com)
 - `EMAIL_SERVER_PORT`: SMTP server port (e.g., 587)
 - `EMAIL_SERVER_USER`: SMTP server username

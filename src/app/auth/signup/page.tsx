@@ -127,7 +127,6 @@ export default function SignUpPage() {
                       Don't see the email? Check your spam folder or try again in a few minutes.
                     </p>
                     
-                    {/* Development mode bypass option */}
                     <motion.div 
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -135,31 +134,25 @@ export default function SignUpPage() {
                       className="mt-6 p-4 border border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm rounded-lg shadow-sm text-sm transition-all duration-300 hover:shadow-md"
                     >
                       <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 mb-3">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
-                          <path d="M12 19c0-4.2-2.8-7-7-7m14 0c-4.2 0-7 2.8-7 7M5 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm14 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
+                          <path d="M22 7.99992L12 15.9999L2 7.99992L12 -0.00012207L22 7.99992Z" />
+                          <path d="M2 7.99992V19.9999H22V7.99992" />
+                          <path d="M2 19.9999L8 13.9999" />
+                          <path d="M22 19.9999L16 13.9999" />
                         </svg>
-                        <h4 className="font-medium">Development Mode</h4>
+                        <h4 className="font-medium">Email Sent</h4>
                       </div>
                       
                       <div className="space-y-3 animate-fadeIn">
                         <p className="text-slate-600 dark:text-slate-400">
-                          Skip email verification during development:
+                          We've sent a verification link to your email. If you don't see it:
                         </p>
                         
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="w-full bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white transition-all duration-300 transform hover:translate-y-[-1px] hover:shadow-md"
-                          onClick={() => {
-                            router.push(`/auth/verify?bypass=dev-only&email=${encodeURIComponent(email)}`);
-                          }}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                            <polyline points="22 4 12 14.01 9 11.01"/>
-                          </svg>
-                          Verify Email Automatically
-                        </Button>
+                        <ul className="list-disc list-inside text-sm space-y-1 text-slate-600 dark:text-slate-400">
+                          <li>Check your spam/junk folder</li>
+                          <li>Make sure you entered your email correctly</li>
+                          <li>Allow a few minutes for delivery</li>
+                        </ul>
                       </div>
                     </motion.div>
                   </div>

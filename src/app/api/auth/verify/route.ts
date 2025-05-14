@@ -46,14 +46,13 @@ export async function GET(req: NextRequest) {
 
 // Development-only route to bypass email verification
 export async function POST(req: NextRequest) {
-  // Always allow for testing purposes
-  // In production, uncomment this check:
-  // if (process.env.NODE_ENV !== "development") {
-  //   return NextResponse.json(
-  //     { message: "This endpoint is only available in development mode" },
-  //     { status: 403 }
-  //   );
-  // }
+  // Only allow in development mode
+  if (process.env.NODE_ENV !== "development") {
+    return NextResponse.json(
+      { message: "This endpoint is only available in development mode" },
+      { status: 403 }
+    );
+  }
 
   try {
     const { email } = await req.json();

@@ -42,38 +42,7 @@ function VerifyPageContent() {
   const token = searchParams.get('token');
 
   useEffect(() => {
-    // Check for development bypass
-    const bypassParam = searchParams.get('bypass');
-    const emailParam = searchParams.get('email');
-    const isDevBypass = bypassParam === 'dev-only' && emailParam;
-
     async function verifyEmail() {
-      // Handle development bypass
-      if (isDevBypass) {
-        try {
-          const response = await fetch('/api/auth/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: emailParam }),
-          });
-
-          const data = await response.json();
-
-          if (response.ok) {
-            setStatus('success');
-            setMessage('Development mode: Email verified without sending verification email. You can now sign in.');
-          } else {
-            setStatus('error');
-            setMessage(data.message || 'Development verification failed.');
-          }
-          return;
-        } catch (error) {
-          setStatus('error');
-          setMessage('An error occurred during development verification.');
-          console.error('Development verification error:', error);
-          return;
-        }
-      }
 
       // Normal verification flow
       if (!token) {
@@ -137,33 +106,6 @@ function VerifyPageContent() {
               <div className="flex flex-col items-center space-y-4 py-8">
                 <XCircle className="h-16 w-16 text-red-500" />
                 <p className="text-center text-red-600">{message}</p>
-                
-                {/* Always show for development testing */}
-                {(
-                  <div className="mt-6 p-4 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 rounded-lg shadow-sm text-sm transition-all duration-300 hover:shadow-md animate-fadeIn">
-                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 mb-3">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
-                        <path d="M12 19c0-4.2-2.8-7-7-7m14 0c-4.2 0-7 2.8-7 7M5 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm14 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/>
-                      </svg>
-                      <h4 className="font-medium">Development Mode</h4>
-                    </div>
-                    
-                    <div className="space-y-3">
-                      <p className="text-slate-600 dark:text-slate-400">
-                        To manually verify any email during development:
-                      </p>
-                      
-                      <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-md border border-slate-200 dark:border-slate-700 font-mono text-xs overflow-x-auto">
-                        <span className="text-slate-500 dark:text-slate-400">/auth/verify?bypass=dev-only&email=</span>
-                        <span className="text-indigo-600 dark:text-indigo-400">your@email.com</span>
-                      </div>
-                      
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Replace "your@email.com" with the email you registered with.
-                      </p>
-                    </div>
-                  </div>
-                )}
                 
                 <style jsx global>{`
                   @keyframes fadeIn {
