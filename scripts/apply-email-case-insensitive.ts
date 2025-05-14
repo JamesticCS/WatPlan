@@ -4,7 +4,8 @@
  * Run with: npx ts-node scripts/apply-email-case-insensitive.ts
  */
 import { exec } from 'child_process';
-import { prisma } from '../src/lib/prisma';
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 
 async function applyMigration() {
   try {
