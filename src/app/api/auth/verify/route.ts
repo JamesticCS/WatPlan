@@ -4,9 +4,12 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   try {
+    console.log("Verification API called");
     const token = req.nextUrl.searchParams.get("token");
+    console.log("Token received:", token);
     
     if (!token) {
+      console.log("Error: Token missing");
       return NextResponse.json(
         { message: "Verification token is required" },
         { status: 400 }
@@ -14,9 +17,12 @@ export async function GET(req: NextRequest) {
     }
     
     // Verify the token
+    console.log("Verifying token...");
     const verificationResult = await verifyToken(token);
+    console.log("Verification result:", verificationResult);
     
     if (!verificationResult) {
+      console.log("Error: Invalid/expired token");
       return NextResponse.json(
         { message: "Invalid or expired token" },
         { status: 400 }
@@ -24,13 +30,16 @@ export async function GET(req: NextRequest) {
     }
     
     const { userId, email } = verificationResult;
+    console.log("User found:", userId, email);
     
     // Update the user's emailVerified status
+    console.log("Updating user's emailVerified status");
     await prisma.user.update({
       where: { id: userId },
       data: { emailVerified: new Date() },
     });
     
+    console.log("User verified successfully");
     return NextResponse.json(
       { message: "Email verified successfully! You can now sign in to your account." },
       { status: 200 }

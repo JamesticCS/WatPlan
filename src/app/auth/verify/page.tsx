@@ -52,11 +52,13 @@ function VerifyPageContent() {
       }
 
       try {
+        console.log('Verifying token:', token);
         const response = await fetch(`/api/auth/verify?token=${token}`, {
           method: 'GET',
         });
 
         const data = await response.json();
+        console.log('Verification response:', response.status, data);
 
         if (response.ok) {
           setStatus('success');
