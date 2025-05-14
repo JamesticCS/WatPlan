@@ -11,7 +11,7 @@
 - `GITHUB_ID`: Your GitHub OAuth app client ID
 - `GITHUB_SECRET`: Your GitHub OAuth app client secret
 - `GOOGLE_ID`: Your Google OAuth app client ID
-- `GOOGLE_SECRET`: Your Google OAuth app client secret
+- `GOOGLE_CLIENT_SECRET`: Your Google OAuth app client secret (renamed from GOOGLE_SECRET)
 
 ### Email Service (for Verification)
 - `EMAIL_SERVER_HOST`: SMTP server host (e.g., smtp.gmail.com)
