@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { signIn } from "next-auth/react";
 import { FaGithub, FaGoogle } from "react-icons/fa";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -26,7 +26,34 @@ const fieldVariants = {
   }),
 };
 
-export default function SignInPage() {
+// Loading component for Suspense fallback
+function SignInLoading() {
+  return (
+    <div className="flex flex-col min-h-screen overflow-hidden relative">
+      <main className="flex-1 container flex items-center justify-center py-10 relative z-10">
+        <div className="w-full max-w-md">
+          <Card className="w-full backdrop-blur-sm bg-white/95 dark:bg-slate-900/95 border border-white/60 dark:border-slate-800/60 shadow-xl">
+            <CardHeader className="space-y-1">
+              <div className="animate-pulse h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-2"></div>
+              <div className="animate-pulse h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="animate-pulse h-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div className="animate-pulse h-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div className="animate-pulse h-10 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            </CardContent>
+            <CardFooter>
+              <div className="animate-pulse h-10 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
+            </CardFooter>
+          </Card>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// Inner component that uses useSearchParams
+function SignInContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -573,5 +600,14 @@ export default function SignInPage() {
         </motion.div>
       </main>
     </div>
+  );
+}
+
+// Export the main component with Suspense
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<SignInLoading />}>
+      <SignInContent />
+    </Suspense>
   );
 }
