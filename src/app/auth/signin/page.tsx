@@ -467,6 +467,7 @@ export default function SignInPage() {
                           justVerified ? 'border-green-500 dark:border-green-700 ring-1 ring-green-500 dark:ring-green-700' : ''
                         }`}
                         autoFocus={justVerified} // Focus on password field if user just verified their email
+                      />
                     </div>
                     <Button 
                       type="submit" 
