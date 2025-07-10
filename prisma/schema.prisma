@@ -25,6 +25,9 @@ enum CredentialCategory {
   SPECIALIZATION
   OPTION
   DOUBLE_DEGREE
+  DIPLOMA
+  CERTIFICATE
+  DEGREE_REQUIREMENTS
 }
 
 enum CoopSequence {
@@ -47,6 +50,7 @@ enum CourseStatus {
 
 enum RequirementStatus {
   NOT_STARTED
+  PLANNED
   IN_PROGRESS
   COMPLETED
 }
@@ -139,6 +143,11 @@ model Course {
   specialConsentToAdd  String?
   specialConsentToDrop String?
   crossListedWith      String[]      @default([])
+  uwflowLiked          Float?
+  uwflowEasy           Float?
+  uwflowUseful         Float?
+  uwflowRatingsCount   Int?
+  uwflowUpdatedAt      DateTime?
   prerequisiteRootId String?
   corequisiteRootId  String?
   createdAt          DateTime      @default(now())
@@ -187,18 +196,19 @@ model Requirement {
 
   // Cache entries
   planRequirementCaches PlanRequirementCache[]
+
+  @@index([parentId])
 }
 
 // ─── Programs & Degrees ─────────────────────────────────────────────────────
 
 model Program {
-  id        String   @id @default(cuid())
-  kualiId   String   @unique
-  name      String   @unique
-  facultyId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  faculty   Faculty  @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id        String    @id @default(cuid())
+  kualiId   String    @unique
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  faculties Faculty[]
   degrees   Degree[]
 }
 
@@ -270,31 +280,33 @@ model PlanDegree {
 }
 
 model PlanCourse {
-  id           String       @id @default(cuid())
-  planId       String
-  courseId     String
-  term         String
-  status       CourseStatus
-  gradeLabel   String?
-  gradeNumeric Float?
-  displayOrder Int          @default(0)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
-  course       Course       @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                 String       @id @default(cuid())
+  planId             String
+  courseId           String
+  term               String
+  status             CourseStatus
+  gradeLabel         String?
+  gradeNumeric       Float?
+  displayOrder       Int          @default(0)
+  dismissedWarnings  String[]     @default([])
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  plan               Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  course             Course       @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([planId, courseId])
 }
 
 model PlanRequirementCache {
-  id            String            @id @default(cuid())
-  planDegreeId  String
-  requirementId String
-  status        RequirementStatus
-  progress      Float
-  updatedAt     DateTime          @updatedAt
-  planDegree    PlanDegree        @relation(fields: [planDegreeId], references: [id], onDelete: Cascade)
-  requirement   Requirement       @relation(fields: [requirementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id               String            @id @default(cuid())
+  planDegreeId     String
+  requirementId    String
+  status           RequirementStatus
+  progress         Float
+  isManualOverride Boolean           @default(false)
+  updatedAt        DateTime          @updatedAt
+  planDegree       PlanDegree        @relation(fields: [planDegreeId], references: [id], onDelete: Cascade)
+  requirement      Requirement       @relation(fields: [requirementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([planDegreeId, requirementId])
 }
