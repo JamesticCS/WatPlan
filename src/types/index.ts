@@ -1,170 +1,243 @@
-// Course status types
-export type CourseStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+// ─── Enums ──────────────────────────────────────────────────────────────────
 
-// Requirement status types
-export type RequirementStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+export type LogicType = 'ALL' | 'N_OF' | 'COURSE' | 'UNITS' | 'TEXT_RULE';
 
-// Degree types (Major, Minor, etc.)
-export enum DegreeType {
-  MAJOR = 'MAJOR',
-  MINOR = 'MINOR',
-  SPECIALIZATION = 'SPECIALIZATION',
-  OPTION = 'OPTION',
-  JOINT = 'JOINT'
-}
+export type CredentialCategory =
+  | 'HONOURS' | 'JOINT_HONOURS' | 'GENERAL' | 'MINOR'
+  | 'SPECIALIZATION' | 'OPTION' | 'DOUBLE_DEGREE'
+  | 'DIPLOMA' | 'CERTIFICATE' | 'DEGREE_REQUIREMENTS';
 
-// Co-op sequence types
-export type CoopSequence = 'NO_COOP' | 'SEQUENCE_1' | 'SEQUENCE_2' | 'SEQUENCE_3' | 'SEQUENCE_4' | 'CUSTOM';
+export type CoopSequence =
+  | 'NO_COOP' | 'SEQUENCE_1' | 'SEQUENCE_2'
+  | 'SEQUENCE_3' | 'SEQUENCE_4' | 'CUSTOM';
 
-// Term types for academic terms
+export type CourseStatus =
+  | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED'
+  | 'FAILED' | 'DROPPED' | 'BACKLOG';
+
+export type RequirementStatus = 'NOT_STARTED' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED';
+
 export type AcademicTerm = '1A' | '1B' | '2A' | '2B' | '3A' | '3B' | '4A' | '4B' | 'COOP' | string;
 
-// API Response types
+// ─── API ────────────────────────────────────────────────────────────────────
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
   status?: number;
 }
 
-// Faculty types
+// ─── Academic Structure ─────────────────────────────────────────────────────
+
 export interface Faculty {
   id: string;
   name: string;
-  description?: string;
-  programs: Program[];
+  programs?: Program[];
 }
 
-// Program types
-export interface Program {
+export interface Subject {
   id: string;
+  code: string;
   name: string;
-  description?: string;
   facultyId: string;
   faculty?: Faculty;
-  degrees: Degree[];
 }
 
-// Degree types
+export interface Program {
+  id: string;
+  kualiId: string;
+  name: string;
+  faculties?: Faculty[];
+  degrees?: Degree[];
+}
+
 export interface Degree {
   id: string;
-  name: string;
-  description?: string;
+  kualiId: string;
   programId: string;
+  name: string;
+  credentialType: string;
+  credentialCategory: CredentialCategory;
+  systemsOfStudy?: string | null;
+  declarationRequirements?: string | null;
+  minimumAverages?: string | null;
+  graduationRequirements?: string | null;
+  additionalConstraints?: string | null;
+  studentAudience?: string | null;
+  notes?: string | null;
+  offeredBy?: string | null;
+  academicCalendarYear: string;
   program?: Program;
-  requirementSets?: DegreeRequirementSet[];
+  sections?: RequirementSection[];
 }
 
-// Course types
+// ─── Course ─────────────────────────────────────────────────────────────────
+
 export interface Course {
   id: string;
-  courseCode: string;
-  catalogNumber: string;
-  title: string;
-  description?: string;
+  kualiId: string;
+  code: string;
+  number: string;
+  subjectId: string;
+  name: string;
+  description?: string | null;
   units: number;
-  prerequisites?: string;
-  corequisites?: string;
-  antirequisites?: string;
+  antiRequisiteText?: string | null;
+  specialCourseGrading?: string | null;
+  specialConsentToAdd?: string | null;
+  specialConsentToDrop?: string | null;
+  crossListedWith?: string[];
+  uwflowLiked?: number | null;
+  uwflowEasy?: number | null;
+  uwflowUseful?: number | null;
+  uwflowRatingsCount?: number | null;
+  prerequisiteRootId?: string | null;
+  corequisiteRootId?: string | null;
+  prerequisiteRoot?: Requirement | null;
+  corequisiteRoot?: Requirement | null;
+  subjectRef?: Subject;
 }
 
-// Requirement type constants
-export enum RequirementType {
-  COURSE = 'COURSE',
-  COURSE_LIST = 'COURSE_LIST',
-  UNITS = 'UNITS',
-  MULTI_LIST = 'MULTI_LIST',
-  MIN_GRADE = 'MIN_GRADE',
-  MIN_AVERAGE = 'MIN_AVERAGE',
-  MAX_FAILURES = 'MAX_FAILURES',
-  CUSTOM = 'CUSTOM'
+// ─── Requirements (recursive tree) ─────────────────────────────────────────
+
+export interface RequirementSection {
+  id: string;
+  degreeId: string;
+  label: string;
+  displayOrder: number;
+  requirementRootId?: string | null;
+  requirementRoot?: Requirement | null;
 }
 
-// Requirement types
 export interface Requirement {
   id: string;
-  name: string;
-  description?: string;
-  type: string;
-  unitsRequired?: number;
-  coursesRequired?: number;
-  levelRestriction?: string;
-  courseCodeRestriction?: string;
-  concentrationType?: string;
-  minCoursesPerSubject?: number;
-  // Enhanced fields
-  minGradeRequired?: number;
-  minAverage?: number;
-  maxFailures?: number;
-  failureRestriction?: string;
-  maxUnits?: number;
-  requireConcurrent?: string;
-  customLogicType?: string;
-  customLogicParams?: string;
-  status: RequirementStatus;
+  parentId?: string | null;
+  logicType: LogicType;
+  label?: string | null;
+  n?: number | null;
+  courseId?: string | null;
+  courseCode?: string | null;
+  minGradeRequired?: number | null;
+  unitsRequired?: number | null;
+  subjectRestriction?: string | null;
+  levelRestriction?: string | null;
+  minAverage?: number | null;
+  maxFailures?: number | null;
+  failureRestriction?: string | null;
+  concentrationType?: string | null;
+  text?: string | null;
+  displayOrder: number;
+  children?: Requirement[];
+  course?: Course | null;
+  // Populated from PlanRequirementCache when viewing plan progress
+  status?: RequirementStatus;
   progress?: number;
-  courses?: Course[];
-  substitutions?: { originalCourse: Course; substituteCourse: Course }[];
-  lists?: {
-    id: string;
-    name: string;
-    description?: string;
-    courses: Course[];
-  }[];
+  isManualOverride?: boolean;
 }
 
-// Requirement set types
-export interface DegreeRequirementSet {
-  id: string;
-  name: string;
-  description?: string;
-  degreeId: string;
-  requirements: Requirement[];
-}
+// ─── Plan ───────────────────────────────────────────────────────────────────
 
-// Academic Calendar Years
-export type AcademicCalendarYear = '2024-2025' | '2023-2024' | '2022-2023' | '2021-2022' | '2020-2021';
-
-// Plan types
 export interface Plan {
   id: string;
   name: string;
   userId: string;
-  created: string;
-  updated: string;
-  courses: PlanCourse[];
-  degrees: PlanDegree[];
-  academicCalendarYear?: AcademicCalendarYear;
+  academicCalendarYear?: string | null;
+  coopSequence: CoopSequence;
+  customTerms: unknown;
+  createdAt: string;
+  updatedAt: string;
+  courses?: PlanCourse[];
+  degrees?: PlanDegree[];
 }
 
-// Plan course types
 export interface PlanCourse {
   id: string;
   planId: string;
   courseId: string;
-  course: Course;
-  term?: string;
-  termIndex?: number;
+  term: string;
   status: CourseStatus;
-  grade?: string;
-  numericGrade?: number;
+  gradeLabel?: string | null;
+  gradeNumeric?: number | null;
+  displayOrder: number;
+  course?: Course;
 }
 
-// Mock course with term and status for client components
-export interface CourseWithStatus extends Course {
-  term?: string;
-  termIndex?: number;
-  status: CourseStatus;
-  grade?: string;
-  justDropped?: boolean;
-}
-
-// Plan degree types
 export interface PlanDegree {
   id: string;
   planId: string;
   degreeId: string;
-  degree: Degree;
-  type: DegreeType;
-  requirements: Requirement[];
+  degree?: Degree;
+  requirementCache?: PlanRequirementCache[];
+  // UI state (not persisted)
   isRemoving?: boolean;
+}
+
+export interface PlanRequirementCache {
+  id: string;
+  planDegreeId: string;
+  requirementId: string;
+  status: RequirementStatus;
+  progress: number;
+  isManualOverride: boolean;
+  requirement?: Requirement;
+}
+
+// ─── Warnings ───────────────────────────────────────────────────────────────
+
+export type WarningType = 'PREREQUISITE' | 'COREQUISITE' | 'ANTIREQUISITE';
+
+export interface Warning {
+  type: WarningType;
+  message: string;
+  details: string;
+  dismissed: boolean;
+}
+
+export interface CourseWarning {
+  courseId: string;
+  courseCode: string;
+  warnings: Warning[];
+}
+
+// ─── UI helpers ─────────────────────────────────────────────────────────────
+
+/** Flattened course + plan status for the course list component */
+export interface CourseWithStatus {
+  id: string;
+  courseId: string;
+  code: string;
+  number: string;
+  name: string;
+  description?: string | null;
+  units: number;
+  term: string;
+  status: CourseStatus;
+  gradeLabel?: string | null;
+  gradeNumeric?: number | null;
+  displayOrder: number;
+  justDropped?: boolean;
+}
+
+/** Helper to format credential category for display */
+export function formatCredentialCategory(cat: CredentialCategory): string {
+  const map: Record<CredentialCategory, string> = {
+    HONOURS: 'Honours',
+    JOINT_HONOURS: 'Joint Honours',
+    GENERAL: 'General',
+    MINOR: 'Minor',
+    SPECIALIZATION: 'Specialization',
+    OPTION: 'Option',
+    DOUBLE_DEGREE: 'Double Degree',
+    DIPLOMA: 'Diploma',
+    CERTIFICATE: 'Certificate',
+    DEGREE_REQUIREMENTS: 'Degree Requirements',
+  };
+  return map[cat] || cat;
+}
+
+/** Format a course code for display (e.g., "CS341" → "CS 341") */
+export function formatCourseCode(code: string): string {
+  const match = code.match(/^([A-Z]+)(\d.*)$/);
+  if (match) return `${match[1]} ${match[2]}`;
+  return code;
 }
