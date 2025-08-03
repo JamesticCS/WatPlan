@@ -49,13 +49,13 @@ export async function GET(request: NextRequest) {
           },
           orderBy: {
             course: {
-              courseCode: 'asc',
+              code: 'asc',
             }
           }
         },
       },
       orderBy: {
-        updated: 'desc',
+        updatedAt: 'desc',
       },
     });
 

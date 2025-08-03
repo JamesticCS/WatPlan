@@ -7,12 +7,12 @@ import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 // PUT /api/plans/[id]/requirements - Update all requirements for all degrees in a plan
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -20,7 +20,6 @@ export async function PUT(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -32,10 +31,9 @@ export async function PUT(
       );
     }
 
-    // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -47,8 +45,7 @@ export async function PUT(
       );
     }
 
-    // Update all requirements for all degrees in this plan
-    await updateAllRequirementsForPlan(prisma, params.id);
+    await updateAllRequirementsForPlan(prisma, id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

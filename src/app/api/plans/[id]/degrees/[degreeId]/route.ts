@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { ensureFacultyRequirements } from '@/lib/faculty-requirements';
 
 // DELETE /api/plans/[id]/degrees/[degreeId] - Remove a degree from a plan
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; degreeId: string } }
+  { params }: { params: Promise<{ id: string; degreeId: string }> }
 ) {
   try {
+    const { id, degreeId } = await params;
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -19,7 +20,6 @@ export async function DELETE(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -31,10 +31,9 @@ export async function DELETE(
       );
     }
 
-    // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -46,11 +45,10 @@ export async function DELETE(
       );
     }
 
-    // Find the plan degree
     const planDegree = await prisma.planDegree.findUnique({
       where: {
-        id: params.degreeId,
-        planId: params.id,
+        id: degreeId,
+        planId: id,
       },
     });
 
@@ -61,19 +59,22 @@ export async function DELETE(
       );
     }
 
-    // Delete any associated plan requirements
-    await prisma.planRequirement.deleteMany({
-      where: {
-        planDegreeId: params.degreeId,
-      },
+    // Delete associated requirement cache entries
+    await prisma.planRequirementCache.deleteMany({
+      where: { planDegreeId: degreeId },
     });
 
     // Delete the plan degree
     await prisma.planDegree.delete({
-      where: {
-        id: params.degreeId,
-      },
+      where: { id: degreeId },
     });
+
+    // Clean up faculty requirements if no longer needed
+    try {
+      await ensureFacultyRequirements(prisma, id);
+    } catch (error) {
+      console.error('Error cleaning up faculty requirements:', error);
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

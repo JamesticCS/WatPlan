@@ -7,13 +7,12 @@ import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 // POST /api/plans/[id]/courses - Add a course to a plan
 export async function POST(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  const { params } = context;
+  const { id } = await context.params;
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -21,7 +20,6 @@ export async function POST(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -33,10 +31,9 @@ export async function POST(
       );
     }
 
-    // Check if plan exists and belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -48,10 +45,8 @@ export async function POST(
       );
     }
 
-    // Get request body
     const body = await request.json();
-    
-    // Validate required fields
+
     if (!body.courseId) {
       return NextResponse.json(
         { error: 'Course ID is required' },
@@ -59,11 +54,8 @@ export async function POST(
       );
     }
 
-    // Check if course exists
     const course = await prisma.course.findUnique({
-      where: {
-        id: body.courseId,
-      },
+      where: { id: body.courseId },
     });
 
     if (!course) {
@@ -73,11 +65,10 @@ export async function POST(
       );
     }
 
-    // Check if course is already in the plan
     const existingPlanCourse = await prisma.planCourse.findUnique({
       where: {
         planId_courseId: {
-          planId: params.id,
+          planId: id,
           courseId: body.courseId,
         },
       },
@@ -90,28 +81,25 @@ export async function POST(
       );
     }
 
-    // Add course to plan
     const planCourse = await prisma.planCourse.create({
       data: {
-        planId: params.id,
+        planId: id,
         courseId: body.courseId,
-        term: body.term || null,
-        termIndex: body.termIndex || null,
+        term: body.term || 'BACKLOG',
         status: (body.status as any) || 'PLANNED',
-        grade: body.grade || null,
+        gradeLabel: body.gradeLabel || null,
+        gradeNumeric: body.gradeNumeric != null ? body.gradeNumeric : null,
+        displayOrder: body.displayOrder || 0,
       },
       include: {
         course: true,
       },
     });
 
-    // Since a new course was added, update all plan requirements
-    try {
-      await updateAllRequirementsForPlan(prisma, params.id);
-    } catch (error) {
-      console.error('Error updating requirements after adding course:', error);
-      // Continue even if requirements update fails
-    }
+    // Fire-and-forget: update requirement cache in background
+    updateAllRequirementsForPlan(prisma, id).catch(error =>
+      console.error('Error updating requirements after adding course:', error)
+    );
 
     return NextResponse.json({ planCourse }, { status: 201 });
   } catch (error) {
@@ -126,13 +114,12 @@ export async function POST(
 // GET /api/plans/[id]/courses - Get all courses in a plan
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  const { params } = context;
+  const { id } = await context.params;
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -140,7 +127,6 @@ export async function GET(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -152,10 +138,9 @@ export async function GET(
       );
     }
 
-    // Check if plan exists and belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -167,17 +152,14 @@ export async function GET(
       );
     }
 
-    // Get all courses in the plan
     const planCourses = await prisma.planCourse.findMany({
-      where: {
-        planId: params.id,
-      },
+      where: { planId: id },
       include: {
         course: true,
       },
       orderBy: {
         course: {
-          courseCode: 'asc',
+          code: 'asc',
         },
       },
     });

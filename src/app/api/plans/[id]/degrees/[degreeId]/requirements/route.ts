@@ -2,17 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { updateAllRequirementsForPlanDegree } from '@/lib/requirement-utils';
+import { loadFullTree, updateAllRequirementsForPlanDegree } from '@/lib/requirement-utils';
 
 // GET /api/plans/[id]/degrees/[degreeId]/requirements - Get requirements for a plan degree
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string; degreeId: string } }
+  { params }: { params: Promise<{ id: string; degreeId: string }> }
 ) {
   try {
+    const { id, degreeId } = await params;
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -20,7 +20,6 @@ export async function GET(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -32,10 +31,9 @@ export async function GET(
       );
     }
 
-    // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -47,11 +45,19 @@ export async function GET(
       );
     }
 
-    // Find the plan degree
     const planDegree = await prisma.planDegree.findUnique({
       where: {
-        id: params.degreeId,
-        planId: params.id,
+        id: degreeId,
+        planId: id,
+      },
+      include: {
+        degree: {
+          include: {
+            sections: {
+              orderBy: { displayOrder: 'asc' },
+            },
+          },
+        },
       },
     });
 
@@ -62,70 +68,50 @@ export async function GET(
       );
     }
 
-    // Get all requirements with their progress status and all related data
-    const planRequirements = await prisma.planRequirement.findMany({
-      where: {
-        planDegreeId: params.degreeId,
-      },
-      include: {
-        requirement: {
-          include: {
-            courses: {
-              include: {
-                course: true,
-              },
-            },
-            substitutions: {
-              include: {
-                originalCourse: true,
-                substituteCourse: true,
-              },
-            },
-            lists: {
-              include: {
-                courses: {
-                  include: {
-                    course: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+    // Load requirement cache for this plan degree
+    const cache = await prisma.planRequirementCache.findMany({
+      where: { planDegreeId: degreeId },
+    });
+    const cacheMap = new Map(cache.map(c => [c.requirementId, c]));
+
+    // Build sections with full requirement trees and merged cache
+    const sections = await Promise.all(
+      planDegree.degree.sections.map(async (section) => {
+        let requirementRoot = null;
+
+        if (section.requirementRootId) {
+          requirementRoot = await loadFullTree(prisma, section.requirementRootId);
+
+          // Merge cache status/progress into tree nodes
+          if (requirementRoot) {
+            mergeCache(requirementRoot, cacheMap);
+          }
+        }
+
+        return {
+          id: section.id,
+          degreeId: section.degreeId,
+          label: section.label,
+          displayOrder: section.displayOrder,
+          requirementRootId: section.requirementRootId,
+          requirementRoot,
+        };
+      })
+    );
+
+    // Filter out purely informational TEXT_RULE sections (leaf with no children),
+    // but keep parent-constraint TEXT_RULEs whose label prefixes another section
+    const filteredSections = sections.filter(s => {
+      if (s.requirementRoot?.logicType !== 'TEXT_RULE') return true;
+      if (s.requirementRoot.children?.length > 0) return true;
+      // Keep if this section's label is a prefix of another section (parent constraint)
+      const isParentConstraint = sections.some(
+        other => other.id !== s.id && other.label.startsWith(s.label + ' - ')
+      );
+      return isParentConstraint;
     });
 
-    // Format the response to match the Requirement type with all necessary details
-    const requirements = planRequirements.map((pr) => ({
-      id: pr.requirement.id,
-      name: pr.requirement.name,
-      description: pr.requirement.description,
-      type: pr.requirement.type,
-      unitsRequired: pr.requirement.unitsRequired,
-      coursesRequired: pr.requirement.coursesRequired,
-      levelRestriction: pr.requirement.levelRestriction,
-      courseCodeRestriction: pr.requirement.courseCodeRestriction,
-      concentrationType: pr.requirement.concentrationType,
-      minCoursesPerSubject: pr.requirement.minCoursesPerSubject,
-      status: pr.status,
-      progress: pr.progress,
-      // Include all courses associated with this requirement
-      courses: pr.requirement.courses.map((rc) => rc.course),
-      // Include substitutions
-      substitutions: pr.requirement.substitutions.map((sub) => ({
-        originalCourse: sub.originalCourse,
-        substituteCourse: sub.substituteCourse
-      })),
-      // Include requirement lists (for MULTI_LIST type)
-      lists: pr.requirement.lists.map((list) => ({
-        id: list.id,
-        name: list.name,
-        description: list.description,
-        courses: list.courses.map((lc) => lc.course)
-      }))
-    }));
-
-    return NextResponse.json({ requirements });
+    return NextResponse.json({ sections: filteredSections });
   } catch (error) {
     console.error('Error fetching plan requirements:', error);
     return NextResponse.json(
@@ -135,15 +121,15 @@ export async function GET(
   }
 }
 
-// PUT /api/plans/[id]/degrees/[degreeId]/requirements - Update all requirements for a plan degree
+// PUT /api/plans/[id]/degrees/[degreeId]/requirements - Update requirements for a plan degree
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string; degreeId: string } }
+  { params }: { params: Promise<{ id: string; degreeId: string }> }
 ) {
   try {
+    const { id, degreeId } = await params;
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -151,7 +137,6 @@ export async function PUT(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -163,10 +148,9 @@ export async function PUT(
       );
     }
 
-    // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -178,11 +162,10 @@ export async function PUT(
       );
     }
 
-    // Find the plan degree
     const planDegree = await prisma.planDegree.findUnique({
       where: {
-        id: params.degreeId,
-        planId: params.id,
+        id: degreeId,
+        planId: id,
       },
     });
 
@@ -193,78 +176,86 @@ export async function PUT(
       );
     }
 
-    // Update all requirements for this plan degree
-    await updateAllRequirementsForPlanDegree(prisma, params.id, params.degreeId);
+    // Re-evaluate all requirements
+    await updateAllRequirementsForPlanDegree(prisma, id, degreeId);
 
-    // Fetch the updated requirements with all related data
-    const planRequirements = await prisma.planRequirement.findMany({
-      where: {
-        planDegreeId: params.degreeId,
-      },
+    // Return updated sections (same as GET)
+    const degree = await prisma.degree.findUnique({
+      where: { id: planDegree.degreeId },
       include: {
-        requirement: {
-          include: {
-            courses: {
-              include: {
-                course: true,
-              },
-            },
-            substitutions: {
-              include: {
-                originalCourse: true,
-                substituteCourse: true,
-              },
-            },
-            lists: {
-              include: {
-                courses: {
-                  include: {
-                    course: true,
-                  },
-                },
-              },
-            },
-          },
+        sections: {
+          orderBy: { displayOrder: 'asc' },
         },
       },
     });
 
-    // Format the response to match the Requirement type with all necessary details
-    const requirements = planRequirements.map((pr) => ({
-      id: pr.requirement.id,
-      name: pr.requirement.name,
-      description: pr.requirement.description,
-      type: pr.requirement.type,
-      unitsRequired: pr.requirement.unitsRequired,
-      coursesRequired: pr.requirement.coursesRequired,
-      levelRestriction: pr.requirement.levelRestriction,
-      courseCodeRestriction: pr.requirement.courseCodeRestriction,
-      concentrationType: pr.requirement.concentrationType,
-      minCoursesPerSubject: pr.requirement.minCoursesPerSubject,
-      status: pr.status,
-      progress: pr.progress,
-      // Include all courses associated with this requirement
-      courses: pr.requirement.courses.map((rc) => rc.course),
-      // Include substitutions
-      substitutions: pr.requirement.substitutions.map((sub) => ({
-        originalCourse: sub.originalCourse,
-        substituteCourse: sub.substituteCourse
-      })),
-      // Include requirement lists (for MULTI_LIST type)
-      lists: pr.requirement.lists.map((list) => ({
-        id: list.id,
-        name: list.name,
-        description: list.description,
-        courses: list.courses.map((lc) => lc.course)
-      }))
-    }));
+    if (!degree) {
+      return NextResponse.json(
+        { error: 'Degree not found' },
+        { status: 404 }
+      );
+    }
 
-    return NextResponse.json({ requirements });
+    const cache = await prisma.planRequirementCache.findMany({
+      where: { planDegreeId: degreeId },
+    });
+    const cacheMap = new Map(cache.map(c => [c.requirementId, c]));
+
+    const sections = await Promise.all(
+      degree.sections.map(async (section) => {
+        let requirementRoot = null;
+        if (section.requirementRootId) {
+          requirementRoot = await loadFullTree(prisma, section.requirementRootId);
+          if (requirementRoot) {
+            mergeCache(requirementRoot, cacheMap);
+          }
+        }
+        return {
+          id: section.id,
+          degreeId: section.degreeId,
+          label: section.label,
+          displayOrder: section.displayOrder,
+          requirementRootId: section.requirementRootId,
+          requirementRoot,
+        };
+      })
+    );
+
+    // Filter out purely informational TEXT_RULE sections (leaf with no children),
+    // but keep parent-constraint TEXT_RULEs whose label prefixes another section
+    const filteredSections = sections.filter(s => {
+      if (s.requirementRoot?.logicType !== 'TEXT_RULE') return true;
+      if (s.requirementRoot.children?.length > 0) return true;
+      const isParentConstraint = sections.some(
+        other => other.id !== s.id && other.label.startsWith(s.label + ' - ')
+      );
+      return isParentConstraint;
+    });
+
+    return NextResponse.json({ sections: filteredSections });
   } catch (error) {
     console.error('Error updating plan requirements:', error);
     return NextResponse.json(
       { error: 'Failed to update plan requirements' },
       { status: 500 }
     );
+  }
+}
+
+// Helper to merge cache data into tree nodes
+function mergeCache(
+  node: any,
+  cacheMap: Map<string, { status: string; progress: number; isManualOverride: boolean }>
+) {
+  const cached = cacheMap.get(node.id);
+  if (cached) {
+    node.status = cached.status;
+    node.progress = cached.progress;
+    node.isManualOverride = cached.isManualOverride;
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      mergeCache(child, cacheMap);
+    }
   }
 }

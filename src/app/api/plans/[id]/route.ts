@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
+import { ensureFacultyRequirements } from '@/lib/faculty-requirements';
 
 // GET /api/plans/[id] - Get a specific plan by ID
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  
+
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -21,7 +21,6 @@ export async function GET(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -33,7 +32,6 @@ export async function GET(
       );
     }
 
-    // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
         id,
@@ -46,12 +44,12 @@ export async function GET(
               include: {
                 program: {
                   include: {
-                    faculty: true,
+                    faculties: true,
                   }
                 }
               }
             },
-            requirements: {
+            requirementCache: {
               include: {
                 requirement: true,
               }
@@ -64,7 +62,7 @@ export async function GET(
           },
           orderBy: {
             course: {
-              courseCode: 'asc',
+              code: 'asc',
             }
           }
         },
@@ -78,7 +76,54 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ plan });
+    // Backfill: ensure faculty requirements are present for existing plans
+    let changed = false;
+    try {
+      changed = await ensureFacultyRequirements(prisma, id);
+    } catch (error) {
+      console.error('Error ensuring faculty requirements:', error);
+    }
+
+    if (!changed) {
+      return NextResponse.json({ plan });
+    }
+
+    // Re-fetch only if faculty requirements were added/removed
+    const freshPlan = await prisma.plan.findUnique({
+      where: { id, userId: user.id },
+      include: {
+        degrees: {
+          include: {
+            degree: {
+              include: {
+                program: {
+                  include: {
+                    faculties: true,
+                  }
+                }
+              }
+            },
+            requirementCache: {
+              include: {
+                requirement: true,
+              }
+            }
+          }
+        },
+        courses: {
+          include: {
+            course: true,
+          },
+          orderBy: {
+            course: {
+              code: 'asc',
+            }
+          }
+        },
+      },
+    });
+
+    return NextResponse.json({ plan: freshPlan });
   } catch (error) {
     console.error('Error fetching plan:', error);
     return NextResponse.json(
@@ -91,14 +136,13 @@ export async function GET(
 // PUT /api/plans/[id] - Update a plan
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  
+
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -106,7 +150,6 @@ export async function PUT(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -118,14 +161,10 @@ export async function PUT(
       );
     }
 
-    // Get request body
     const body = await request.json();
-    
-    // Find the plan and check if it belongs to the user
+
     const existingPlan = await prisma.plan.findUnique({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!existingPlan) {
@@ -142,26 +181,14 @@ export async function PUT(
       );
     }
 
-    // Prepare update data
     const updateData: any = {};
-    if (body.name) {
-      updateData.name = body.name;
-    }
-    if (body.academicCalendarYear) {
-      updateData.academicCalendarYear = body.academicCalendarYear;
-    }
-    if (body.coopSequence) {
-      updateData.coopSequence = body.coopSequence;
-    }
-    if (body.customTerms) {
-      updateData.customTerms = body.customTerms;
-    }
+    if (body.name) updateData.name = body.name;
+    if (body.academicCalendarYear) updateData.academicCalendarYear = body.academicCalendarYear;
+    if (body.coopSequence) updateData.coopSequence = body.coopSequence;
+    if (body.customTerms) updateData.customTerms = body.customTerms;
 
-    // Update the plan
     const updatedPlan = await prisma.plan.update({
-      where: {
-        id,
-      },
+      where: { id },
       data: updateData,
     });
 
@@ -178,14 +205,13 @@ export async function PUT(
 // PATCH /api/plans/[id] - Partial update a plan
 export async function PATCH(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  
+
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -193,7 +219,6 @@ export async function PATCH(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -205,14 +230,10 @@ export async function PATCH(
       );
     }
 
-    // Get request body
     const body = await request.json();
-    
-    // Find the plan and check if it belongs to the user
+
     const existingPlan = await prisma.plan.findUnique({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!existingPlan) {
@@ -229,28 +250,14 @@ export async function PATCH(
       );
     }
 
-    // Prepare update data
     const updateData: any = {};
-    
-    // Update fields that are present in the request
-    if (body.name !== undefined) {
-      updateData.name = body.name;
-    }
-    if (body.academicCalendarYear !== undefined) {
-      updateData.academicCalendarYear = body.academicCalendarYear;
-    }
-    if (body.coopSequence !== undefined) {
-      updateData.coopSequence = body.coopSequence;
-    }
-    if (body.customTerms !== undefined) {
-      updateData.customTerms = body.customTerms;
-    }
+    if (body.name !== undefined) updateData.name = body.name;
+    if (body.academicCalendarYear !== undefined) updateData.academicCalendarYear = body.academicCalendarYear;
+    if (body.coopSequence !== undefined) updateData.coopSequence = body.coopSequence;
+    if (body.customTerms !== undefined) updateData.customTerms = body.customTerms;
 
-    // Update the plan
     const updatedPlan = await prisma.plan.update({
-      where: {
-        id,
-      },
+      where: { id },
       data: updateData,
     });
 
@@ -267,14 +274,13 @@ export async function PATCH(
 // DELETE /api/plans/[id] - Delete a plan
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  
+
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -282,7 +288,6 @@ export async function DELETE(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -294,11 +299,8 @@ export async function DELETE(
       );
     }
 
-    // Find the plan and check if it belongs to the user
     const existingPlan = await prisma.plan.findUnique({
-      where: {
-        id,
-      },
+      where: { id },
     });
 
     if (!existingPlan) {
@@ -317,7 +319,7 @@ export async function DELETE(
 
     // Delete the plan and all associated records
     await prisma.$transaction([
-      prisma.planRequirement.deleteMany({
+      prisma.planRequirementCache.deleteMany({
         where: {
           planDegree: {
             planId: id,
@@ -325,19 +327,13 @@ export async function DELETE(
         },
       }),
       prisma.planCourse.deleteMany({
-        where: {
-          planId: id,
-        },
+        where: { planId: id },
       }),
       prisma.planDegree.deleteMany({
-        where: {
-          planId: id,
-        },
+        where: { planId: id },
       }),
       prisma.plan.delete({
-        where: {
-          id,
-        },
+        where: { id },
       }),
     ]);
 
@@ -354,14 +350,13 @@ export async function DELETE(
 // POST /api/plans/[id] - Duplicate a plan
 export async function POST(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const { id } = await context.params;
-  
+
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -369,7 +364,6 @@ export async function POST(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -381,7 +375,6 @@ export async function POST(
       );
     }
 
-    // Find the plan and check if it belongs to the user
     const sourcePlan = await prisma.plan.findUnique({
       where: {
         id,
@@ -394,12 +387,12 @@ export async function POST(
               include: {
                 program: {
                   include: {
-                    faculty: true,
+                    faculties: true,
                   }
                 }
               }
             },
-            requirements: {
+            requirementCache: {
               include: {
                 requirement: true,
               }
@@ -423,8 +416,7 @@ export async function POST(
 
     const body = await request.json();
     const { name: requestedName } = body;
-    
-    // Check if the requested name already exists
+
     if (requestedName) {
       const existingPlan = await prisma.plan.findFirst({
         where: {
@@ -432,7 +424,7 @@ export async function POST(
           name: requestedName,
         },
       });
-      
+
       if (existingPlan) {
         return NextResponse.json(
           { error: 'A plan with this name already exists' },
@@ -448,30 +440,26 @@ export async function POST(
         userId: user.id,
         academicCalendarYear: sourcePlan.academicCalendarYear,
         coopSequence: sourcePlan.coopSequence,
-        customTerms: sourcePlan.customTerms,
+        customTerms: sourcePlan.customTerms ?? undefined,
       },
     });
 
-    // Copy degrees and their requirements
+    // Copy degrees and their requirement cache
     for (const degree of sourcePlan.degrees) {
       const newPlanDegree = await prisma.planDegree.create({
         data: {
           planId: newPlan.id,
           degreeId: degree.degreeId,
-          academicCalendarYear: degree.academicCalendarYear,
-          programId: degree.programId,
-          type: degree.type || 'MAJOR', // Default to MAJOR if type is missing
         },
       });
-      
-      // Safely copy requirements for this degree if they exist
-      if (degree.requirements && degree.requirements.length > 0) {
-        await prisma.planRequirement.createMany({
-          data: degree.requirements.map(req => ({
+
+      if (degree.requirementCache && degree.requirementCache.length > 0) {
+        await prisma.planRequirementCache.createMany({
+          data: degree.requirementCache.map(cache => ({
             planDegreeId: newPlanDegree.id,
-            requirementId: req.requirementId,
-            status: req.status,
-            progress: req.progress || 0, // Include progress field with default
+            requirementId: cache.requirementId,
+            status: cache.status,
+            progress: cache.progress,
           })),
         });
       }
@@ -484,19 +472,17 @@ export async function POST(
           planId: newPlan.id,
           courseId: course.courseId,
           term: course.term,
-          termIndex: course.termIndex,
-          status: course.status || 'PLANNED', // Provide default status if missing
-          grade: course.grade,
-          numericGrade: course.numericGrade
+          status: course.status || 'PLANNED',
+          gradeLabel: course.gradeLabel,
+          gradeNumeric: course.gradeNumeric,
+          displayOrder: course.displayOrder,
         })),
       });
     }
-    
-    // Fetch the complete new plan with all relationships to return
+
+    // Fetch the complete new plan
     const completePlan = await prisma.plan.findUnique({
-      where: {
-        id: newPlan.id,
-      },
+      where: { id: newPlan.id },
       include: {
         degrees: {
           include: {
@@ -504,12 +490,12 @@ export async function POST(
               include: {
                 program: {
                   include: {
-                    faculty: true,
+                    faculties: true,
                   }
                 }
               }
             },
-            requirements: {
+            requirementCache: {
               include: {
                 requirement: true,
               }
@@ -522,20 +508,19 @@ export async function POST(
           },
           orderBy: {
             course: {
-              courseCode: 'asc',
+              code: 'asc',
             }
           }
         },
       },
     });
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       plan: completePlan
     });
   } catch (error) {
     console.error('Error duplicating plan:', error);
-    // Log more specific information about the error
     if (error instanceof Error) {
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);

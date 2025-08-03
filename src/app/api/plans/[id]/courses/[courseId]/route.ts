@@ -7,13 +7,12 @@ import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 // PUT /api/plans/[id]/courses/[courseId] - Update a course in a plan
 export async function PUT(
   request: NextRequest,
-  context: { params: { id: string; courseId: string } }
+  context: { params: Promise<{ id: string; courseId: string }> }
 ) {
   const { id, courseId } = await context.params;
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -21,7 +20,6 @@ export async function PUT(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -33,7 +31,6 @@ export async function PUT(
       );
     }
 
-    // Check if plan exists and belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
         id,
@@ -48,7 +45,6 @@ export async function PUT(
       );
     }
 
-    // Check if the course is in the plan
     const existingPlanCourse = await prisma.planCourse.findUnique({
       where: {
         planId_courseId: {
@@ -65,10 +61,8 @@ export async function PUT(
       );
     }
 
-    // Get request body
     const body = await request.json();
-    
-    // Update plan course
+
     const updatedPlanCourse = await prisma.planCourse.update({
       where: {
         planId_courseId: {
@@ -78,22 +72,21 @@ export async function PUT(
       },
       data: {
         term: body.term !== undefined ? body.term : existingPlanCourse.term,
-        termIndex: body.termIndex !== undefined ? body.termIndex : existingPlanCourse.termIndex,
-        status: (body.status as any) || existingPlanCourse.status,
-        grade: body.grade !== undefined ? body.grade : existingPlanCourse.grade,
+        status: body.status || existingPlanCourse.status,
+        gradeLabel: body.gradeLabel !== undefined ? body.gradeLabel : existingPlanCourse.gradeLabel,
+        gradeNumeric: body.gradeNumeric !== undefined ? body.gradeNumeric : existingPlanCourse.gradeNumeric,
+        displayOrder: body.displayOrder !== undefined ? body.displayOrder : existingPlanCourse.displayOrder,
+        dismissedWarnings: body.dismissedWarnings !== undefined ? body.dismissedWarnings : existingPlanCourse.dismissedWarnings,
       },
       include: {
         course: true,
       },
     });
 
-    // Since the course status might have changed, update all plan requirements
-    try {
-      await updateAllRequirementsForPlan(prisma, id);
-    } catch (error) {
-      console.error('Error updating requirements after course update:', error);
-      // Continue even if requirements update fails
-    }
+    // Fire-and-forget: update requirement cache in background
+    updateAllRequirementsForPlan(prisma, id).catch(error =>
+      console.error('Error updating requirements:', error)
+    );
 
     return NextResponse.json({ planCourse: updatedPlanCourse });
   } catch (error) {
@@ -108,13 +101,12 @@ export async function PUT(
 // DELETE /api/plans/[id]/courses/[courseId] - Remove a course from a plan
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string; courseId: string } }
+  context: { params: Promise<{ id: string; courseId: string }> }
 ) {
   const { id, courseId } = await context.params;
   try {
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -122,7 +114,6 @@ export async function DELETE(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -134,7 +125,6 @@ export async function DELETE(
       );
     }
 
-    // Check if plan exists and belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
         id,
@@ -149,7 +139,6 @@ export async function DELETE(
       );
     }
 
-    // Check if the course is in the plan
     const existingPlanCourse = await prisma.planCourse.findUnique({
       where: {
         planId_courseId: {
@@ -166,7 +155,6 @@ export async function DELETE(
       );
     }
 
-    // Remove course from plan
     await prisma.planCourse.delete({
       where: {
         planId_courseId: {
@@ -176,13 +164,10 @@ export async function DELETE(
       },
     });
 
-    // Since a course was removed, update all plan requirements
-    try {
-      await updateAllRequirementsForPlan(prisma, id);
-    } catch (error) {
-      console.error('Error updating requirements after course removal:', error);
-      // Continue even if requirements update fails
-    }
+    // Fire-and-forget: update requirement cache in background
+    updateAllRequirementsForPlan(prisma, id).catch(error =>
+      console.error('Error updating requirements:', error)
+    );
 
     return NextResponse.json({ success: true });
   } catch (error) {

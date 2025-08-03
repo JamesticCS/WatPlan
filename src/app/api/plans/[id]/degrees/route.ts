@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { DegreeType } from '@/types';
+import { updateAllRequirementsForPlanDegree } from '@/lib/requirement-utils';
+import { ensureFacultyRequirements } from '@/lib/faculty-requirements';
 
 // GET /api/plans/[id]/degrees - Get all degrees associated with a plan
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -20,7 +21,6 @@ export async function GET(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -32,10 +32,9 @@ export async function GET(
       );
     }
 
-    // Get the plan by ID, ensuring it belongs to the current user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -47,17 +46,14 @@ export async function GET(
       );
     }
 
-    // Get all degrees associated with the plan
     const planDegrees = await prisma.planDegree.findMany({
-      where: {
-        planId: params.id,
-      },
+      where: { planId: id },
       include: {
         degree: {
           include: {
             program: {
               include: {
-                faculty: true,
+                faculties: true,
               }
             }
           }
@@ -78,12 +74,12 @@ export async function GET(
 // POST /api/plans/[id]/degrees - Add a degree to a plan
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
-    
-    // Check if user is authenticated
+
     if (!session?.user?.email) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -91,7 +87,6 @@ export async function POST(
       );
     }
 
-    // Find the user by email
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
@@ -103,10 +98,8 @@ export async function POST(
       );
     }
 
-    // Get request body
     const body = await request.json();
-    
-    // Validate required fields
+
     if (!body.degreeId) {
       return NextResponse.json(
         { error: 'Degree ID is required' },
@@ -114,17 +107,9 @@ export async function POST(
       );
     }
 
-    if (!body.type || !Object.values(DegreeType).includes(body.type)) {
-      return NextResponse.json(
-        { error: 'Valid degree type is required' },
-        { status: 400 }
-      );
-    }
-
-    // Find the plan and check if it belongs to the user
     const plan = await prisma.plan.findUnique({
       where: {
-        id: params.id,
+        id,
         userId: user.id,
       },
     });
@@ -136,11 +121,8 @@ export async function POST(
       );
     }
 
-    // Check if the degree exists
     const degree = await prisma.degree.findUnique({
-      where: {
-        id: body.degreeId,
-      },
+      where: { id: body.degreeId },
     });
 
     if (!degree) {
@@ -151,17 +133,18 @@ export async function POST(
     }
 
     // Check if this degree is already added to the plan
-    const existingPlanDegree = await prisma.planDegree.findFirst({
+    const existingPlanDegree = await prisma.planDegree.findUnique({
       where: {
-        planId: params.id,
-        degreeId: body.degreeId,
-        type: body.type,
+        planId_degreeId: {
+          planId: id,
+          degreeId: body.degreeId,
+        },
       },
     });
 
     if (existingPlanDegree) {
       return NextResponse.json(
-        { error: 'This degree is already added to the plan with this type' },
+        { error: 'This degree is already added to the plan' },
         { status: 400 }
       );
     }
@@ -169,21 +152,15 @@ export async function POST(
     // Add the degree to the plan
     const planDegree = await prisma.planDegree.create({
       data: {
-        planId: params.id,
+        planId: id,
         degreeId: body.degreeId,
-        type: body.type,
       },
       include: {
         degree: {
           include: {
             program: {
               include: {
-                faculty: true,
-              }
-            },
-            requirementSets: {
-              include: {
-                requirements: true
+                faculties: true,
               }
             }
           }
@@ -191,50 +168,21 @@ export async function POST(
       },
     });
 
-    // Create plan requirements for all requirements in this degree
-    const requirementSets = planDegree.degree.requirementSets;
-    if (requirementSets && requirementSets.length > 0) {
-      const requirements = requirementSets.flatMap(set => set.requirements);
-      
-      // Create initial plan requirements with NOT_STARTED status
-      await Promise.all(requirements.map(requirement => 
-        prisma.planRequirement.create({
-          data: {
-            planDegreeId: planDegree.id,
-            requirementId: requirement.id,
-            status: 'NOT_STARTED',
-            progress: 0
-          }
-        })
-      ));
-
-      // Update requirements based on current plan courses
-      try {
-        const { updateAllRequirementsForPlanDegree } = await import('@/lib/requirement-utils');
-        await updateAllRequirementsForPlanDegree(prisma, params.id, planDegree.id);
-      } catch (error) {
-        console.error('Error initializing requirements:', error);
-        // Continue even if requirements update fails
-      }
+    // Populate requirement cache based on current plan courses
+    try {
+      await updateAllRequirementsForPlanDegree(prisma, id, planDegree.id);
+    } catch (error) {
+      console.error('Error initializing requirements:', error);
     }
 
-    // Re-fetch plan degree with requirements for response
-    const updatedPlanDegree = await prisma.planDegree.findUnique({
-      where: { id: planDegree.id },
-      include: {
-        degree: {
-          include: {
-            program: {
-              include: {
-                faculty: true,
-              }
-            }
-          }
-        },
-      },
-    });
+    // Auto-add faculty degree requirements if this is a math faculty program
+    try {
+      await ensureFacultyRequirements(prisma, id);
+    } catch (error) {
+      console.error('Error ensuring faculty requirements:', error);
+    }
 
-    return NextResponse.json({ planDegree: updatedPlanDegree });
+    return NextResponse.json({ planDegree });
   } catch (error) {
     console.error('Error adding degree to plan:', error);
     return NextResponse.json(
