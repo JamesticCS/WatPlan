@@ -5,231 +5,274 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { getProgram } from "@/lib/api";
+import {
+  Program,
+  Degree,
+  RequirementSection,
+  Requirement,
+  formatCredentialCategory,
+  formatCourseCode,
+} from "@/types";
+import { ArrowLeft, GraduationCap, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-
-// Mock data for the program detail page
-const PROGRAM_DETAIL = {
-  id: "1",
-  name: "Mathematical Physics",
-  faculty: "Mathematics",
-  description: "The Mathematical Physics plan provides an excellent preparation for graduate work in theoretical and mathematical physics, as well as certain areas of mathematics. Students who have both mathematical ability and a strong interest in the physical sciences find this an attractive and challenging program.",
-  degrees: [
-    {
-      id: "bmh-mathphys",
-      name: "Bachelor of Mathematics (Honours)",
-      requirements: [
-        {
-          id: "req1",
-          name: "Required Mathematics Courses",
-          courses: [
-            { code: "MATH", catalogNumber: "135", title: "Algebra for Honours Mathematics" },
-            { code: "MATH", catalogNumber: "136", title: "Linear Algebra 1 for Honours Mathematics" },
-            { code: "MATH", catalogNumber: "137", title: "Calculus 1 for Honours Mathematics" },
-            { code: "MATH", catalogNumber: "138", title: "Calculus 2 for Honours Mathematics" },
-            { code: "MATH", catalogNumber: "235", title: "Linear Algebra 2 for Honours Mathematics" },
-            { code: "MATH", catalogNumber: "237", title: "Calculus 3 for Honours Mathematics" },
-            { code: "MATH", catalogNumber: "239", title: "Introduction to Combinatorics" },
-            { code: "MATH", catalogNumber: "245", title: "Linear Algebra 3 (Advanced Level)" },
-            { code: "MATH", catalogNumber: "247", title: "Calculus 3 (Advanced Level)" },
-            { code: "MATH", catalogNumber: "249", title: "Introduction to Combinatorics (Advanced Level)" },
-          ]
-        },
-        {
-          id: "req2",
-          name: "Required Physics Courses",
-          courses: [
-            { code: "PHYS", catalogNumber: "121", title: "Mechanics" },
-            { code: "PHYS", catalogNumber: "122", title: "Waves, Electricity and Magnetism" },
-            { code: "PHYS", catalogNumber: "234", title: "Quantum Physics 1" },
-            { code: "PHYS", catalogNumber: "242", title: "Electricity and Magnetism 1" },
-            { code: "PHYS", catalogNumber: "263", title: "Classical Mechanics and Special Relativity" },
-            { code: "PHYS", catalogNumber: "342", title: "Electricity and Magnetism 2" },
-            { code: "PHYS", catalogNumber: "365", title: "Quantum Mechanics I" },
-          ]
-        },
-        {
-          id: "req3",
-          name: "Additional Requirements",
-          description: "Complete 3.5 units of additional AMATH or PHYS courses, with a minimum of 1.0 unit at the 300- or 400-level."
-        },
-        {
-          id: "req4",
-          name: "Additional Math Requirements",
-          description: "Complete 1.0 unit of additional MATH courses at the 300-level or above."
-        },
-        {
-          id: "req5",
-          name: "Communication Requirements",
-          courses: [
-            { code: "ENGL", catalogNumber: "192", title: "Communication in Mathematics and Computer Science" },
-          ]
-        },
-        {
-          id: "req6",
-          name: "Electives",
-          description: "Additional courses to reach the 20.0 units required for the degree."
-        }
-      ]
-    }
-  ],
-  relatedPrograms: [
-    { id: "3", name: "Pure Mathematics" },
-    { id: "4", name: "Applied Mathematics" },
-    { id: "5", name: "Physics" },
-  ]
-};
 
 export default function ProgramDetailPage() {
   const params = useParams();
   const router = useRouter();
   const programId = params.id as string;
-  
-  // In a real app, you'd fetch the program details based on the ID
-  const program = PROGRAM_DETAIL;
-  
+
+  const [program, setProgram] = useState<Program | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchProgram = async () => {
+      setIsLoading(true);
+      const response = await getProgram(programId);
+      setIsLoading(false);
+
+      if (response.error) {
+        setError(response.error);
+        return;
+      }
+
+      if (response.data?.program) {
+        setProgram(response.data.program);
+      }
+    };
+
+    fetchProgram();
+  }, [programId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-1 container py-10">
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading program...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !program) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-1 container py-10">
+          <div className="text-center py-12">
+            <p className="text-destructive">{error || "Program not found"}</p>
+            <Button variant="outline" className="mt-4" onClick={() => router.push("/programs")}>
+              Back to Programs
+            </Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       <Navbar />
       <main className="flex-1 container py-10">
-        <div className="flex justify-between items-center mb-8">
-          <div>
+        <div className="max-w-4xl mx-auto">
+          <Button variant="ghost" size="sm" onClick={() => router.push("/programs")} className="mb-4">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Back to Programs
+          </Button>
+
+          {/* Program header */}
+          <div className="mb-8">
             <h1 className="text-3xl font-bold">{program.name}</h1>
-            <div className="flex gap-2 mt-2">
-              <Badge className="bg-muted text-foreground hover:bg-muted">
-                {program.faculty}
-              </Badge>
+            {program.faculties && program.faculties.length > 0 && (
+              <div className="flex gap-2 mt-2">
+                {program.faculties.map((f) => (
+                  <Badge key={f.id} variant="secondary">
+                    {f.name}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Degrees */}
+          {program.degrees && program.degrees.length > 0 ? (
+            <div className="space-y-8">
               {program.degrees.map((degree) => (
-                <Badge key={degree.id} className="bg-primary hover:bg-primary/90">
-                  {degree.name}
-                </Badge>
+                <DegreeCard key={degree.id} degree={degree} />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-8 text-center">
+                <p className="text-muted-foreground">No degrees found for this program.</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function DegreeCard({ degree }: { degree: Degree }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  };
+
+  const metadata = [
+    { label: "Systems of Study", value: degree.systemsOfStudy },
+    { label: "Declaration Requirements", value: degree.declarationRequirements },
+    { label: "Minimum Averages", value: degree.minimumAverages },
+    { label: "Graduation Requirements", value: degree.graduationRequirements },
+    { label: "Additional Constraints", value: degree.additionalConstraints },
+    { label: "Student Audience", value: degree.studentAudience },
+    { label: "Offered By", value: degree.offeredBy },
+    { label: "Notes", value: degree.notes },
+  ].filter((m) => m.value);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-3">
+          <GraduationCap className="h-6 w-6 text-primary" />
+          <div>
+            <CardTitle className="text-xl">{degree.name}</CardTitle>
+            <div className="flex gap-2 mt-1">
+              <Badge>{formatCredentialCategory(degree.credentialCategory)}</Badge>
+              <Badge variant="outline">{degree.credentialType}</Badge>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Metadata */}
+        {metadata.length > 0 && (
+          <div className="space-y-3">
+            {metadata.map((m) => (
+              <div key={m.label}>
+                <p className="text-sm font-medium">{m.label}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{m.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Requirement Sections */}
+        {degree.sections && degree.sections.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold flex items-center gap-2 mb-3">
+              <BookOpen className="h-5 w-5" />
+              Requirement Sections
+            </h3>
+            <div className="space-y-2">
+              {degree.sections.map((section) => (
+                <div key={section.id} className="border rounded-md">
+                  <button
+                    className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+                    onClick={() => toggleSection(section.id)}
+                  >
+                    {expandedSections.has(section.id) ? (
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                    )}
+                    <span className="text-sm font-medium">{section.label}</span>
+                  </button>
+                  {expandedSections.has(section.id) && section.requirementRoot && (
+                    <div className="px-4 pb-3 border-t">
+                      <div className="pt-3">
+                        <RequirementTreeDisplay node={section.requirementRoot} />
+                      </div>
+                    </div>
+                  )}
+                  {expandedSections.has(section.id) && !section.requirementRoot && (
+                    <div className="px-4 pb-3 border-t">
+                      <p className="text-sm text-muted-foreground pt-3 italic">
+                        No detailed requirements available for this section.
+                      </p>
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
           </div>
-          <Button variant="outline" onClick={() => router.push("/programs")}>
-            Back to Programs
-          </Button>
-        </div>
-        
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Program Description</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">{program.description}</p>
-              </CardContent>
-            </Card>
-            
-            <Tabs defaultValue="requirements">
-              <TabsList className="mb-4">
-                <TabsTrigger value="requirements">Degree Requirements</TabsTrigger>
-                <TabsTrigger value="courses">Required Courses</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="requirements">
-                {program.degrees.map((degree) => (
-                  <div key={degree.id} className="space-y-4">
-                    <h2 className="text-xl font-bold">{degree.name} Requirements</h2>
-                    {degree.requirements.map((reqGroup) => (
-                      <Card key={reqGroup.id} className="mb-4">
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg">{reqGroup.name}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          {reqGroup.description && (
-                            <p className="text-sm text-muted-foreground mb-4">{reqGroup.description}</p>
-                          )}
-                          {reqGroup.courses && (
-                            <ul className="list-disc list-inside space-y-1">
-                              {reqGroup.courses.map((course, idx) => (
-                                <li key={idx} className="text-sm">
-                                  <span className="font-medium">{course.code} {course.catalogNumber}</span>: {course.title}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                ))}
-              </TabsContent>
-              
-              <TabsContent value="courses">
-                <div className="space-y-4">
-                  {program.degrees.map((degree) => (
-                    <div key={degree.id} className="space-y-4">
-                      <h2 className="text-xl font-bold">{degree.name} Courses</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {degree.requirements
-                          .filter(req => req.courses)
-                          .flatMap(req => req.courses || [])
-                          .map((course, idx) => (
-                            <Card key={idx}>
-                              <CardHeader className="pb-2">
-                                <CardTitle className="text-lg">{course.code} {course.catalogNumber}</CardTitle>
-                              </CardHeader>
-                              <CardContent>
-                                <p className="text-sm text-muted-foreground">{course.title}</p>
-                                <div className="mt-4">
-                                  <Link href={`/courses/${course.code}${course.catalogNumber}`}>
-                                    <Button variant="outline" size="sm">View Course</Button>
-                                  </Link>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
-          
-          <div>
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle>Add to Your Plan</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Add this program to your degree plan to track your progress.
-                </p>
-                <Button className="w-full">Add to My Plan</Button>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Related Programs</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {program.relatedPrograms.map((related) => (
-                    <Link 
-                      key={related.id}
-                      href={`/programs/${related.id}`}
-                      className="block p-3 border rounded-md hover:bg-muted transition-colors"
-                    >
-                      {related.name}
-                    </Link>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </main>
-      <footer className="py-6 border-t">
-        <div className="container flex flex-col sm:flex-row justify-between items-center">
-          <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} WatPlan
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RequirementTreeDisplay({ node, depth = 0 }: { node: Requirement; depth?: number }) {
+  const hasChildren = node.children && node.children.length > 0;
+
+  return (
+    <div className={depth > 0 ? "ml-4 border-l pl-3" : ""}>
+      <div className="py-0.5">
+        {node.logicType === "ALL" && hasChildren && (
+          <p className="text-sm font-medium text-muted-foreground">
+            {node.label || "All of the following:"}
           </p>
-        </div>
-      </footer>
+        )}
+        {node.logicType === "N_OF" && hasChildren && (
+          <p className="text-sm font-medium text-muted-foreground">
+            {node.label && !/^\d+$/.test(node.label.trim())
+              ? node.label
+              : `Complete ${node.n || "?"} of the following`}
+          </p>
+        )}
+        {node.logicType === "COURSE" && (
+          <span className="text-sm">
+            <Link href={`/courses/${encodeURIComponent(node.courseCode || "")}`}>
+              <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono hover:underline cursor-pointer">
+                {node.courseCode ? formatCourseCode(node.courseCode) : "Unknown"}
+              </code>
+            </Link>
+            {node.course && (
+              <span className="text-muted-foreground ml-1.5">{node.course.name}</span>
+            )}
+            {node.minGradeRequired != null && (
+              <span className="text-xs text-orange-600 dark:text-orange-400 ml-1">
+                (min {node.minGradeRequired}%)
+              </span>
+            )}
+          </span>
+        )}
+        {node.logicType === "UNITS" && (
+          <p className="text-sm">
+            {node.unitsRequired} units
+            {node.subjectRestriction && ` in ${node.subjectRestriction}`}
+            {node.levelRestriction && ` at ${node.levelRestriction}-level`}
+          </p>
+        )}
+        {node.logicType === "TEXT_RULE" && (
+          <p className="text-sm text-muted-foreground italic">
+            {node.text || node.label || "See academic calendar"}
+          </p>
+        )}
+
+        {hasChildren && (
+          <div className="mt-1">
+            {node.children!.map((child) => (
+              <RequirementTreeDisplay key={child.id} node={child} depth={depth + 1} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

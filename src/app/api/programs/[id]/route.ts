@@ -1,33 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { loadFullTree } from '@/lib/requirement-utils';
 
 // GET /api/programs/[id] - Get a specific program by ID
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Get the program by ID with related data
+    const { id } = await params;
     const program = await prisma.program.findUnique({
-      where: {
-        id: params.id,
-      },
+      where: { id },
       include: {
-        faculty: true,
+        faculties: true,
         degrees: {
           include: {
-            requirementSets: {
-              include: {
-                requirements: {
-                  include: {
-                    courses: {
-                      include: {
-                        course: true,
-                      },
-                    },
-                  },
-                },
-              },
+            sections: {
+              orderBy: { displayOrder: 'asc' },
             },
           },
         },
@@ -41,7 +30,25 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ program });
+    // Load full requirement trees for each section
+    const degreesWithTrees = await Promise.all(
+      program.degrees.map(async (degree) => {
+        const sectionsWithTrees = await Promise.all(
+          degree.sections.map(async (section) => {
+            let requirementRoot = null;
+            if (section.requirementRootId) {
+              requirementRoot = await loadFullTree(prisma, section.requirementRootId);
+            }
+            return { ...section, requirementRoot };
+          })
+        );
+        return { ...degree, sections: sectionsWithTrees };
+      })
+    );
+
+    return NextResponse.json({
+      program: { ...program, degrees: degreesWithTrees },
+    });
   } catch (error) {
     console.error('Error fetching program:', error);
     return NextResponse.json(

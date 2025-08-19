@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { getCourses } from "@/lib/api";
-import { Course } from "@/types";
+import { Course, formatCourseCode } from "@/types";
 import { useToast } from "@/hooks/use-toast";
 
 export default function CoursesPage() {
@@ -40,7 +40,7 @@ export default function CoursesPage() {
         
         // Extract unique subjects
         const subjectList = Array.from(
-          new Set(response.data.courses.map((course) => course.courseCode))
+          new Set(response.data.courses.map((course) => course.code))
         ).sort();
         setSubjects(subjectList);
       }
@@ -51,12 +51,12 @@ export default function CoursesPage() {
   
   // Filter courses based on search term and subject filter
   const filteredCourses = courses.filter((course) => {
-    const matchesSearch = 
-      (course.courseCode + " " + course.catalogNumber).toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.title.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesSubject = !filterSubject || course.courseCode === filterSubject;
-    
+    const matchesSearch =
+      formatCourseCode(course.code).toLowerCase().includes(searchTerm.toLowerCase()) ||
+      course.name.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesSubject = !filterSubject || course.code === filterSubject;
+
     return matchesSearch && matchesSubject;
   });
   
@@ -108,25 +108,19 @@ export default function CoursesPage() {
                     <div className="flex justify-between items-start">
                       <div>
                         <CardTitle className="text-lg">
-                          {course.courseCode} {course.catalogNumber}: {course.title}
+                          {formatCourseCode(course.code)}: {course.name}
                         </CardTitle>
                         <Badge className="mt-1 bg-muted text-foreground hover:bg-muted">
                           {course.units} units
                         </Badge>
                       </div>
-                      <Link href={`/courses/${course.courseCode}${course.catalogNumber}`}>
+                      <Link href={`/courses/${course.code}`}>
                         <Button variant="outline" size="sm">View Details</Button>
                       </Link>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <p className="text-sm text-muted-foreground">{course.description || "No description available."}</p>
-                    
-                    {course.prerequisites && (
-                      <div className="mt-2">
-                        <p className="text-xs text-muted-foreground"><span className="font-medium">Prerequisites:</span> {course.prerequisites}</p>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               ))}

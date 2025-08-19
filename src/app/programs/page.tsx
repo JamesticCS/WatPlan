@@ -60,11 +60,10 @@ export default function ProgramsPage() {
   
   // Filter programs based on search term and faculty filter
   const filteredPrograms = programs.filter((program) => {
-    const matchesSearch = 
-      program.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (program.description && program.description.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesSearch =
+      program.name.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesFaculty = !filterFaculty || program.faculty?.id === filterFaculty;
+    const matchesFaculty = !filterFaculty || program.faculties?.some(f => f.id === filterFaculty);
     
     return matchesSearch && matchesFaculty;
   });
@@ -121,11 +120,11 @@ export default function ProgramsPage() {
                           {program.name}
                         </CardTitle>
                         <div className="flex gap-2 mt-1">
-                          {program.faculty && (
-                            <Badge className="bg-muted text-foreground hover:bg-muted">
-                              {program.faculty.name}
+                          {program.faculties && program.faculties.map((f) => (
+                            <Badge key={f.id} className="bg-muted text-foreground hover:bg-muted">
+                              {f.name.replace('Faculty of ', '')}
                             </Badge>
-                          )}
+                          ))}
                           {program.degrees && program.degrees.slice(0, 1).map((degree) => (
                             <Badge key={degree.id} className="bg-primary hover:bg-primary/90">
                               {degree.name}
@@ -144,7 +143,11 @@ export default function ProgramsPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm text-muted-foreground">{program.description || "No description available."}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {program.degrees && program.degrees.length > 0
+                        ? program.degrees.map(d => d.name).join(', ')
+                        : "No description available."}
+                    </p>
                   </CardContent>
                 </Card>
               ))}

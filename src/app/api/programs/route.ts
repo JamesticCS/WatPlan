@@ -4,18 +4,16 @@ import { prisma } from '@/lib/prisma';
 // GET /api/programs - Get all programs
 export async function GET(request: NextRequest) {
   try {
-    // Get query parameters
     const searchParams = request.nextUrl.searchParams;
     const facultyId = searchParams.get('facultyId');
     const name = searchParams.get('name');
-    
-    // Build filter conditions
+
     const where: any = {};
-    
+
     if (facultyId) {
-      where.facultyId = facultyId;
+      where.faculties = { some: { id: facultyId } };
     }
-    
+
     if (name) {
       where.name = {
         contains: name,
@@ -23,11 +21,10 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    // Get programs with faculties
     const programs = await prisma.program.findMany({
       where,
       include: {
-        faculty: true,
+        faculties: true,
         degrees: true,
       },
       orderBy: {
