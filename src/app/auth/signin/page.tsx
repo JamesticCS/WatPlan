@@ -149,60 +149,43 @@ function SignInContent() {
   const handleGuestSignIn = async () => {
     setIsLoading(true);
     try {
-      await signIn("guest", { callbackUrl: "/plans" });
+      const result = await signIn("guest", { 
+        redirect: false,
+        callbackUrl: "/plans" 
+      });
+      
+      if (result?.error) {
+        toast({
+          title: "Error",
+          description: "Failed to sign in as guest",
+          variant: "destructive",
+        });
+      } else if (result?.ok) {
+        router.push("/plans");
+      }
     } catch (error) {
       toast({
         title: "Error",
         description: "Failed to sign in as guest",
         variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
     }
   };
 
-  // Enhanced OAuth sign-in with error handling and logging
+  // OAuth sign-in handler
   const handleOAuthSignIn = async (provider: string) => {
     setIsLoading(true);
-    
     try {
-      // Log which provider is being used
-      console.log(`[AUTH] Attempting to sign in with ${provider}`);
-      
-      // Use signIn with redirect: false to handle errors
-      const result = await signIn(provider, { 
-        redirect: false,
-        callbackUrl: "/plans"
-      });
-      
-      if (result?.error) {
-        // Log the error
-        console.error(`[AUTH ERROR] ${provider} sign-in failed:`, result.error);
-        
-        // Show error toast
-        toast({
-          title: "Authentication Error",
-          description: `There was a problem signing in with ${provider}. Please try again.`,
-          variant: "destructive",
-        });
-        
-        // If there's a URL, redirect to it (usually the error page)
-        if (result.url) {
-          router.push(result.url);
-        }
-      } else if (result?.url) {
-        // Success case, redirect to the URL
-        console.log(`[AUTH] ${provider} sign-in successful, redirecting to:`, result.url);
-        router.push(result.url);
-      }
+      await signIn(provider, { callbackUrl: "/plans" });
     } catch (error) {
-      // Catch any unexpected errors
-      console.error(`[AUTH ERROR] Unexpected error during ${provider} sign-in:`, error);
+      console.error(`[AUTH ERROR] ${provider} sign-in failed:`, error);
       toast({
         title: "Authentication Error",
-        description: "An unexpected error occurred. Please try again.",
+        description: `Failed to sign in with ${provider}`,
         variant: "destructive",
       });
-    } finally {
       setIsLoading(false);
     }
   };
