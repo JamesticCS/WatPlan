@@ -5,7 +5,68 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  relationMode = "prisma"
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum LogicType {
+  ALL
+  N_OF
+  COURSE
+  UNITS
+  TEXT_RULE
+}
+
+enum CredentialCategory {
+  HONOURS
+  JOINT_HONOURS
+  GENERAL
+  MINOR
+  SPECIALIZATION
+  OPTION
+  DOUBLE_DEGREE
+}
+
+enum CoopSequence {
+  NO_COOP
+  SEQUENCE_1
+  SEQUENCE_2
+  SEQUENCE_3
+  SEQUENCE_4
+  CUSTOM
+}
+
+enum CourseStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  DROPPED
+  BACKLOG
+}
+
+enum RequirementStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// ─── Auth (NextAuth.js) ─────────────────────────────────────────────────────
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  isGuest        Boolean   @default(false)
+  guestExpiresAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  accounts       Account[]
+  sessions       Session[]
+  plans          Plan[]
 }
 
 model Account {
@@ -34,20 +95,6 @@ model Session {
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique // Note: Case-insensitive uniqueness handled via migration
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  isGuest       Boolean   @default(false)
-  guestExpiresAt DateTime?
-  accounts      Account[]
-  plans         Plan[]
-  sessions      Session[]
-}
-
 model VerificationToken {
   identifier String
   token      String   @unique
@@ -56,191 +103,180 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-model Course {
-  id                       String                    @id @default(cuid())
-  courseCode               String
-  catalogNumber            String
-  title                    String
-  description              String?
-  units                    Float
-  prerequisites            String?
-  corequisites             String?
-  antirequisites           String?
-  originalSubstitutions    CourseSubstitution[]      @relation("OriginalCourse")
-  substituteSubstitutions  CourseSubstitution[]      @relation("SubstituteCourse")
-  degreeRequirementCourses DegreeRequirementCourse[]
-  planCourses              PlanCourse[]
-  listCourses              RequirementListCourse[]
-
-  @@unique([courseCode, catalogNumber])
-}
+// ─── Academic Structure ─────────────────────────────────────────────────────
 
 model Faculty {
-  id          String    @id @default(cuid())
-  name        String    @unique
-  description String?
-  programs    Program[]
+  id        String    @id @default(cuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  subjects  Subject[]
+  programs  Program[]
 }
 
-model Program {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  facultyId   String
-  degrees     Degree[]
-  faculty     Faculty  @relation(fields: [facultyId], references: [id])
+model Subject {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  facultyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  faculty   Faculty  @relation(fields: [facultyId], references: [id])
+  courses   Course[]
+}
 
-  @@unique([name, facultyId])
+model Course {
+  id                 String        @id @default(cuid())
+  kualiId            String        @unique
+  code               String        @unique
+  number             String
+  subjectId          String
+  name               String
+  description        String?
+  units              Float
+  antirequisites     String[]      @default([])
+  prerequisiteRootId String?
+  corequisiteRootId  String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  subjectRef         Subject       @relation(fields: [subjectId], references: [id])
+  prerequisiteRoot   Requirement?  @relation("CoursePrerequisite", fields: [prerequisiteRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  corequisiteRoot    Requirement?  @relation("CourseCorequisite", fields: [corequisiteRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  planCourses        PlanCourse[]
+  requirementRefs    Requirement[] @relation("RequirementCourse")
+}
+
+// ─── Requirements (recursive tree) ─────────────────────────────────────────
+
+model Requirement {
+  id                 String    @id @default(cuid())
+  parentId           String?
+  logicType          LogicType
+  label              String?
+  n                  Int?
+  courseId           String?
+  courseCode         String?
+  minGradeRequired   Int?
+  unitsRequired      Float?
+  subjectRestriction String?
+  levelRestriction   String?
+  minAverage         Float?
+  maxFailures        Int?
+  failureRestriction String?
+  concentrationType  String?
+  text               String?
+  displayOrder       Int       @default(0)
+  createdAt          DateTime  @default(now())
+
+  // Self-referential tree
+  parent   Requirement?  @relation("RequirementTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  children Requirement[] @relation("RequirementTree")
+
+  // Course leaf node link
+  course Course? @relation("RequirementCourse", fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  // Inverse relations (things pointing TO this requirement as a root)
+  coursePrerequisites Course[] @relation("CoursePrerequisite")
+  courseCorequisites  Course[] @relation("CourseCorequisite")
+  degreeRequirements  Degree[] @relation("DegreeRequirement")
+
+  // Cache entries
+  planRequirementCaches PlanRequirementCache[]
+}
+
+// ─── Programs & Degrees ─────────────────────────────────────────────────────
+
+model Program {
+  id        String   @id @default(cuid())
+  kualiId   String   @unique
+  name      String   @unique
+  facultyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  faculty   Faculty  @relation(fields: [facultyId], references: [id])
+  degrees   Degree[]
 }
 
 model Degree {
-  id              String                 @id @default(cuid())
-  name            String
-  description     String?
-  programId       String
-  program         Program                @relation(fields: [programId], references: [id])
-  requirementSets DegreeRequirementSet[]
-  planDegrees     PlanDegree[]
+  id                      String             @id @default(cuid())
+  kualiId                 String
+  programId               String
+  name                    String
+  credentialType          String
+  credentialCategory      CredentialCategory
+  systemsOfStudy          String[]           @default([])
+  declarationRequirements String?
+  minimumAverages         String[]           @default([])
+  graduationRequirements  String[]           @default([])
+  additionalConstraints   String[]           @default([])
+  offeredBy               String?
+  requirementRootId       String?
+  academicCalendarYear    String
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
+  program                 Program            @relation(fields: [programId], references: [id])
+  requirementRoot         Requirement?       @relation("DegreeRequirement", fields: [requirementRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  planDegrees             PlanDegree[]
 
-  @@unique([name, programId])
+  @@unique([kualiId, academicCalendarYear])
 }
 
-model DegreeRequirementSet {
-  id                  String              @id @default(cuid())
-  name                String
-  description         String?
-  degreeId            String
-  academicCalendarYear String?
-  requirements        DegreeRequirement[]
-  degree              Degree              @relation(fields: [degreeId], references: [id])
-
-  @@unique([name, degreeId])
-}
-
-model DegreeRequirement {
-  id                    String                    @id @default(cuid())
-  name                  String
-  description           String?
-  requirementSetId      String
-  type                  String
-  unitsRequired         Float?
-  coursesRequired       Int?
-  levelRestriction      String?
-  courseCodeRestriction String?
-  concentrationType     String?
-  maxSubjects           Int?
-  minCoursesPerSubject  Int?
-  minSubjects           Int?
-  // Enhanced fields for additional requirement types
-  minGradeRequired      Int?                      // For minimum grade requirements (e.g., 60%)
-  minAverage            Float?                    // For minimum average requirements (e.g., 75%)
-  maxFailures           Int?                      // For maximum failure limits
-  failureRestriction    String?                   // Subject restriction for failure limits (e.g., "CHEM")
-  maxUnits              Float?                    // For maximum unit limits
-  requireConcurrent     String?                   // For concurrent enrollment requirements
-  customLogicType       String?                   // For complex custom logic
-  customLogicParams     String?                   // JSON string with parameters for custom logic
-  substitutions         CourseSubstitution[]
-  requirementSet        DegreeRequirementSet      @relation(fields: [requirementSetId], references: [id])
-  courses               DegreeRequirementCourse[]
-  planRequirements      PlanRequirement[]
-  lists                 RequirementList[]
-}
-
-model DegreeRequirementCourse {
-  id            String            @id @default(cuid())
-  requirementId String
-  courseId      String
-  isRequired    Boolean           @default(true)
-  course        Course            @relation(fields: [courseId], references: [id])
-  requirement   DegreeRequirement @relation(fields: [requirementId], references: [id])
-
-  @@unique([requirementId, courseId])
-}
+// ─── User Plans ─────────────────────────────────────────────────────────────
 
 model Plan {
   id                   String       @id @default(cuid())
-  name                 String
   userId               String
-  created              DateTime     @default(now())
-  updated              DateTime     @updatedAt
+  name                 String
   academicCalendarYear String?
-  coopSequence         String?      @default("NO_COOP")
-  customTerms          String[]     @default([])
+  coopSequence         CoopSequence @default(NO_COOP)
+  customTerms          Json         @default("[]")
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
   user                 User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   courses              PlanCourse[]
   degrees              PlanDegree[]
-  
+
   @@unique([name, userId])
 }
 
+model PlanDegree {
+  id               String                 @id @default(cuid())
+  planId           String
+  degreeId         String
+  createdAt        DateTime               @default(now())
+  plan             Plan                   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  degree           Degree                 @relation(fields: [degreeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  requirementCache PlanRequirementCache[]
+
+  @@unique([planId, degreeId])
+}
+
 model PlanCourse {
-  id        String  @id @default(cuid())
-  planId    String
-  courseId  String
-  term      String?
-  status    String
-  grade     String?
-  numericGrade Float?  // Store numeric grade for average calculations
-  termIndex Int?
-  course    Course  @relation(fields: [courseId], references: [id])
-  plan      Plan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id           String       @id @default(cuid())
+  planId       String
+  courseId     String
+  term         String
+  status       CourseStatus
+  gradeLabel   String?
+  gradeNumeric Float?
+  displayOrder Int          @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  plan         Plan         @relation(fields: [planId], references: [id], onDelete: Cascade)
+  course       Course       @relation(fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([planId, courseId])
 }
 
-model PlanDegree {
-  id           String            @id @default(cuid())
-  planId       String
-  degreeId     String
-  type         String
-  degree       Degree            @relation(fields: [degreeId], references: [id])
-  plan         Plan              @relation(fields: [planId], references: [id], onDelete: Cascade)
-  requirements PlanRequirement[]
-
-  @@unique([planId, degreeId, type])
-}
-
-model RequirementList {
-  id            String                  @id @default(cuid())
-  name          String
-  description   String?
-  requirementId String
-  requirement   DegreeRequirement       @relation(fields: [requirementId], references: [id])
-  courses       RequirementListCourse[]
-}
-
-model RequirementListCourse {
-  id       String          @id @default(cuid())
-  listId   String
-  courseId String
-  course   Course          @relation(fields: [courseId], references: [id])
-  list     RequirementList @relation(fields: [listId], references: [id])
-
-  @@unique([listId, courseId])
-}
-
-model CourseSubstitution {
-  id                  String            @id @default(cuid())
-  originalCourseId    String
-  substituteCourseId  String
-  requirementId       String
-  planTypeRestriction String?
-  originalCourse      Course            @relation("OriginalCourse", fields: [originalCourseId], references: [id])
-  requirement         DegreeRequirement @relation(fields: [requirementId], references: [id])
-  substituteCourse    Course            @relation("SubstituteCourse", fields: [substituteCourseId], references: [id])
-
-  @@unique([originalCourseId, substituteCourseId, requirementId])
-}
-
-model PlanRequirement {
+model PlanRequirementCache {
   id            String            @id @default(cuid())
   planDegreeId  String
   requirementId String
-  status        String
-  progress      Float?
+  status        RequirementStatus
+  progress      Float
+  updatedAt     DateTime          @updatedAt
   planDegree    PlanDegree        @relation(fields: [planDegreeId], references: [id], onDelete: Cascade)
-  requirement   DegreeRequirement @relation(fields: [requirementId], references: [id])
+  requirement   Requirement       @relation(fields: [requirementId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([planDegreeId, requirementId])
 }
