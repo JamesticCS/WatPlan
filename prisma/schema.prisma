@@ -121,7 +121,7 @@ model Subject {
   facultyId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  faculty   Faculty  @relation(fields: [facultyId], references: [id])
+  faculty   Faculty  @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   courses   Course[]
 }
 
@@ -134,12 +134,16 @@ model Course {
   name               String
   description        String?
   units              Float
-  antirequisites     String[]      @default([])
+  antiRequisiteText    String?
+  specialCourseGrading String?
+  specialConsentToAdd  String?
+  specialConsentToDrop String?
+  crossListedWith      String[]      @default([])
   prerequisiteRootId String?
   corequisiteRootId  String?
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
-  subjectRef         Subject       @relation(fields: [subjectId], references: [id])
+  subjectRef         Subject       @relation(fields: [subjectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   prerequisiteRoot   Requirement?  @relation("CoursePrerequisite", fields: [prerequisiteRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   corequisiteRoot    Requirement?  @relation("CourseCorequisite", fields: [corequisiteRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   planCourses        PlanCourse[]
@@ -167,6 +171,7 @@ model Requirement {
   text               String?
   displayOrder       Int       @default(0)
   createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   // Self-referential tree
   parent   Requirement?  @relation("RequirementTree", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -176,9 +181,9 @@ model Requirement {
   course Course? @relation("RequirementCourse", fields: [courseId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   // Inverse relations (things pointing TO this requirement as a root)
-  coursePrerequisites Course[] @relation("CoursePrerequisite")
-  courseCorequisites  Course[] @relation("CourseCorequisite")
-  degreeRequirements  Degree[] @relation("DegreeRequirement")
+  coursePrerequisites Course[]             @relation("CoursePrerequisite")
+  courseCorequisites  Course[]             @relation("CourseCorequisite")
+  sectionRoot         RequirementSection?  @relation("SectionRequirement")
 
   // Cache entries
   planRequirementCaches PlanRequirementCache[]
@@ -193,7 +198,7 @@ model Program {
   facultyId String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  faculty   Faculty  @relation(fields: [facultyId], references: [id])
+  faculty   Faculty  @relation(fields: [facultyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   degrees   Degree[]
 }
 
@@ -204,21 +209,34 @@ model Degree {
   name                    String
   credentialType          String
   credentialCategory      CredentialCategory
-  systemsOfStudy          String[]           @default([])
+  systemsOfStudy          String?
   declarationRequirements String?
-  minimumAverages         String[]           @default([])
-  graduationRequirements  String[]           @default([])
-  additionalConstraints   String[]           @default([])
+  minimumAverages         String?
+  graduationRequirements  String?
+  additionalConstraints   String?
+  studentAudience         String?
+  notes                   String?
   offeredBy               String?
-  requirementRootId       String?
   academicCalendarYear    String
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
-  program                 Program            @relation(fields: [programId], references: [id])
-  requirementRoot         Requirement?       @relation("DegreeRequirement", fields: [requirementRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  program                 Program            @relation(fields: [programId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sections                RequirementSection[]
   planDegrees             PlanDegree[]
 
   @@unique([kualiId, academicCalendarYear])
+}
+
+model RequirementSection {
+  id                String       @id @default(cuid())
+  degreeId          String
+  label             String
+  displayOrder      Int          @default(0)
+  requirementRootId String?      @unique
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  degree            Degree       @relation(fields: [degreeId], references: [id], onDelete: Cascade)
+  requirementRoot   Requirement? @relation("SectionRequirement", fields: [requirementRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 // ─── User Plans ─────────────────────────────────────────────────────────────
