@@ -1,33 +1,20 @@
 "use client";
 
+import "@/components/plan/plan-course-list.css";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { XIcon, PlusIcon, AlertTriangleIcon, Pencil, CheckCircle2, ListChecks } from "lucide-react";
+import { XIcon, PlusIcon, ListChecks } from "lucide-react";
 import { useMemo, useState, useRef, useEffect, useCallback } from "react";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { CourseWithStatus, AcademicTerm, CoopSequence as CoopSequenceType, Warning, formatCourseCode } from "@/types";
 import { updatePlanCourse, removeCourseFromPlan, getPlanWarnings } from "@/lib/api";
 import { CourseWarningIndicator } from "@/components/plan/course-warning-indicator";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import { PlanTranscriptUpload } from "@/components/plan/plan-transcript-upload";
 import { CourseDetailDialog } from "@/components/plan/course-detail-dialog";
+import { CourseStatusDialog } from "@/components/plan/course-status-dialog";
+import { SequenceChangeDialog } from "@/components/plan/sequence-change-dialog";
+import { getStatusBadge, GradeBadge } from "@/components/plan/grade-badge";
 
 interface PlanCourseListProps {
   courses: CourseWithStatus[];
@@ -757,24 +744,6 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
     return grouped;
   }, [courses, termIds, planId]);
   
-  const getStatusBadge = (status: CourseWithStatus["status"]) => {
-    switch (status) {
-      case "COMPLETED":
-        return <Badge className="bg-green-500 hover:bg-green-600">Completed</Badge>;
-      case "IN_PROGRESS":
-        return <Badge className="bg-blue-500 hover:bg-blue-600">In Progress</Badge>;
-      case "PLANNED":
-        return <Badge variant="outline">Planned</Badge>;
-      case "FAILED":
-        return <Badge className="bg-red-500 hover:bg-red-600">Failed</Badge>;
-      case "DROPPED":
-        return <Badge className="bg-orange-500 hover:bg-orange-600">Dropped</Badge>;
-      case "BACKLOG":
-        return <Badge variant="outline" className="text-muted-foreground">Backlog</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
 
   const openEditDialog = (course: CourseWithStatus) => {
     setEditingCourse(course);
@@ -864,359 +833,6 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
   
   return (
     <div className="space-y-8">
-      {/* CSS for drag and drop styling */}
-      <style jsx global>{`
-        .term-column-droppable {
-          transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-          background-color: rgba(0, 0, 0, 0.01);
-          box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
-        }
-        
-        .term-column-drag-over {
-          background-color: rgba(0, 0, 0, 0.03);
-          box-shadow: inset 0 0 0 2px var(--primary);
-          transform: translateY(-2px);
-          transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-        
-        .course-item {
-          cursor: grab;
-          transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
-          position: relative;
-          backface-visibility: hidden;
-          transform-origin: 50% 50%;
-          touch-action: none; /* Prevents default touch actions during drag */
-        }
-        
-        .course-item:active {
-          cursor: grabbing;
-        }
-        
-        /* Fix for Safari - disable pointer-events on card contents so drag works */
-        .course-item > * {
-          pointer-events: none;
-        }
-
-        /* Re-enable pointer-events on interactive elements inside cards */
-        .course-item .course-item-btn,
-        .course-item .course-item-btn * {
-          pointer-events: auto !important;
-          position: relative;
-          z-index: 10;
-        }
-        
-        .course-item-dragging {
-          opacity: 0.4;
-          transform: scale(0.98);
-          background-color: rgba(0, 0, 0, 0.02);
-        }
-        
-        .drag-ghost {
-          border: 1px solid rgba(0, 0, 0, 0.1);
-          z-index: 9999;
-        }
-        
-        /* Replace the single drag-over with top and bottom variants */
-        .course-item-drag-over-top {
-          background-color: rgba(29, 78, 216, 0.05);
-          box-shadow: 0 -2px 0 var(--primary) inset;
-          position: relative;
-        }
-        
-        .course-item-drag-over-top::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 2px;
-          background: var(--primary);
-          z-index: 5;
-        }
-        
-        .course-item-drag-over-bottom {
-          background-color: rgba(29, 78, 216, 0.05);
-          box-shadow: 0 2px 0 var(--primary) inset;
-          position: relative;
-        }
-        
-        .course-item-drag-over-bottom::after {
-          content: '';
-          position: absolute;
-          bottom: 0;
-          left: 0;
-          right: 0;
-          height: 2px;
-          background: var(--primary);
-          z-index: 5;
-        }
-
-        @keyframes dropAnimation {
-          0% {
-            transform: translateY(-8px) scale(1.02);
-            opacity: 0.8;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-          }
-          50% {
-            transform: translateY(2px) scale(1);
-          }
-          75% {
-            transform: translateY(-1px) scale(1);
-          }
-          100% {
-            transform: translateY(0) scale(1);
-            opacity: 1;
-            box-shadow: none;
-          }
-        }
-        
-        .course-item-dropped {
-          animation: dropAnimation 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-        }
-        
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-            transform: translateY(-5px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .animate-fadeIn {
-          animation: fadeIn 0.3s ease-in-out forwards;
-        }
-        
-        /* Term move animations */
-        @keyframes moveLeft {
-          0% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; }
-          10% { transform: translateX(-5px); opacity: 0.95; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
-          30% { transform: translateX(-20px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
-          60% { transform: translateX(-30px); opacity: 0.85; box-shadow: 0 0 20px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
-          80% { transform: translateX(-10px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.06)); }
-          100% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; background-color: transparent; }
-        }
-
-        @keyframes moveRight {
-          0% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; }
-          10% { transform: translateX(5px); opacity: 0.95; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
-          30% { transform: translateX(20px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
-          60% { transform: translateX(30px); opacity: 0.85; box-shadow: 0 0 20px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
-          80% { transform: translateX(10px); opacity: 0.9; background-color: var(--primary-light, rgba(0, 100, 255, 0.06)); }
-          100% { transform: translateX(0); opacity: 1; box-shadow: 0 0 0 rgba(0,0,0,0); z-index: 1; background-color: transparent; }
-        }
-        
-        @keyframes swapLeft {
-          0% { transform: translateX(0); z-index: 2; box-shadow: 0 0 0 rgba(0,0,0,0); }
-          20% { transform: translateX(-30%); z-index: 2; box-shadow: 0 5px 20px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
-          40% { transform: translateX(calc(-100% - 1rem)); z-index: 2; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
-          60% { transform: translateX(calc(-100% - 1rem)); z-index: 1; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
-          80% { transform: translateX(-30%); z-index: 1; box-shadow: 0 3px 15px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
-          100% { transform: translateX(0); z-index: 1; box-shadow: 0 0 0 rgba(0,0,0,0); background-color: transparent; }
-        }
-        
-        @keyframes swapRight {
-          0% { transform: translateX(0); z-index: 1; box-shadow: 0 0 0 rgba(0,0,0,0); }
-          20% { transform: translateX(30%); z-index: 1; box-shadow: 0 5px 15px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
-          40% { transform: translateX(calc(100% + 1rem)); z-index: 1; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
-          60% { transform: translateX(calc(100% + 1rem)); z-index: 2; box-shadow: 0 5px 25px rgba(0,0,0,0.15); background-color: var(--primary-light, rgba(0, 100, 255, 0.12)); }
-          80% { transform: translateX(30%); z-index: 2; box-shadow: 0 3px 15px rgba(0,0,0,0.1); background-color: var(--primary-light, rgba(0, 100, 255, 0.08)); }
-          100% { transform: translateX(0); z-index: 2; box-shadow: 0 0 0 rgba(0,0,0,0); background-color: transparent; }
-        }
-        
-        /* Button click animations for arrow buttons */
-        @keyframes arrowClickLeft {
-          0% { transform: translateX(0); }
-          50% { transform: translateX(-2px); }
-          100% { transform: translateX(0); }
-        }
-        
-        @keyframes arrowClickRight {
-          0% { transform: translateX(0); }
-          50% { transform: translateX(2px); }
-          100% { transform: translateX(0); }
-        }
-        
-        .arrow-click-left {
-          animation: arrowClickLeft 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-        
-        .arrow-click-right {
-          animation: arrowClickRight 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
-
-        .term-move-left {
-          animation: moveLeft 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-          position: relative;
-        }
-
-        .term-move-right {
-          animation: moveRight 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-          position: relative;
-        }
-        
-        .term-swap-left {
-          animation: swapLeft 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-          position: relative;
-        }
-        
-        .term-swap-right {
-          animation: swapRight 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-          position: relative;
-        }
-        
-        /* New term animation */
-        @keyframes termAddedAnimation {
-          0% {
-            opacity: 0;
-            transform: translateY(10px) scale(0.95);
-            box-shadow: 0 0 0 rgba(0,0,0,0);
-          }
-          50% {
-            opacity: 1;
-            transform: translateY(-5px) scale(1.02);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-          }
-          75% {
-            transform: translateY(2px) scale(1);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            box-shadow: 0 0 0 rgba(0,0,0,0);
-          }
-        }
-        
-        .term-new-added {
-          animation: termAddedAnimation 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
-          z-index: 10;
-        }
-        
-        /* Term highlight effect during swap */
-        .term-highlight {
-          outline: 2px solid var(--primary, #0070f3);
-          box-shadow: 0 0 15px rgba(0, 112, 243, 0.3);
-          z-index: 3;
-        }
-        
-        /* Term header pulse animation */
-        @keyframes termHeaderPulse {
-          0% { background-color: var(--primary); }
-          50% { background-color: var(--primary-light, rgba(0, 112, 243, 0.8)); }
-          100% { background-color: var(--primary); }
-        }
-        
-        .term-header-pulse {
-          animation: termHeaderPulse 0.5s ease-in-out;
-        }
-        
-        /* Global class to prevent other interactions during transitions */
-        .term-transition-active .term-column:not(.term-highlight) {
-          opacity: 0.7;
-          transition: opacity 0.3s ease;
-        }
-        
-        /* Ensure course items inherit animation from term */
-        .term-swap-left .course-item,
-        .term-swap-right .course-item,
-        .term-move-left .course-item,
-        .term-move-right .course-item {
-          animation: none !important; /* Override any existing animations */
-          transition: none !important; /* Override any existing transitions */
-          transform: none !important; /* Keep position relative to parent */
-        }
-        
-        /* Animated connector between swapping terms */
-        @keyframes swapConnector {
-          0% { opacity: 0; width: 0; }
-          40% { opacity: 1; width: 100%; }
-          60% { opacity: 1; width: 100%; }
-          100% { opacity: 0; width: 0; }
-        }
-        
-        .term-transition-active::before {
-          content: '';
-          position: fixed;
-          top: 50%;
-          left: 0;
-          right: 0;
-          height: 4px;
-          background: var(--primary, #0070f3);
-          z-index: 5;
-          opacity: 0;
-          transform: translateY(-50%);
-          animation: swapConnector 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-          pointer-events: none;
-        }
-        
-        /* Remove course button hover effect */
-        .remove-course-btn:hover {
-          background-color: rgba(239, 68, 68, 0.1) !important;
-        }
-
-        .remove-course-btn:hover svg {
-          color: rgb(239, 68, 68) !important;
-        }
-
-        .remove-course-btn:active {
-          background-color: rgba(239, 68, 68, 0.2) !important;
-        }
-        
-        /* Animation for course removal */
-        @keyframes removeAnimation {
-          0% {
-            opacity: 1;
-            transform: scale(1);
-            max-height: 200px;
-          }
-          70% {
-            opacity: 0;
-            transform: scale(0.95);
-            max-height: 200px;
-          }
-          100% {
-            opacity: 0;
-            transform: scale(0.9);
-            max-height: 0;
-            margin: 0;
-            padding: 0;
-            border-width: 0;
-          }
-        }
-        
-        .course-item-removing {
-          animation: removeAnimation 0.4s ease-in-out forwards !important;
-          overflow: hidden;
-        }
-
-        .term-header {
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: var(--foreground);
-          background-color: var(--primary);
-          color: var(--primary-foreground);
-          padding: 0.5rem 1rem;
-          border-radius: 0.375rem 0.375rem 0 0;
-        }
-
-        .terms-grid {
-          display: flex;
-          flex-direction: row;
-          gap: 1rem;
-          width: max-content;
-          min-width: 100%;
-          padding-bottom: 1rem;
-        }
-        
-        .term-column {
-          min-width: 250px;
-          width: 250px;
-          flex-shrink: 0;
-        }
-      `}</style>
-      
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="border rounded-lg p-4 bg-muted/30 md:col-span-2">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1614,23 +1230,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                     <div className="flex items-center justify-between mt-2">
                       <div className="text-sm flex items-center gap-2">
                         <span>{Number(course.units).toFixed(1)} units</span>
-                        {(course.gradeLabel || course.gradeNumeric != null) && (
-                          <span className={`px-2 py-0.5 rounded-md text-xs font-medium
-                            ${course.gradeLabel === 'CR' ? 'bg-green-100 text-green-800'
-                              : course.gradeLabel === 'NCR' ? 'bg-red-100 text-red-800'
-                              : course.gradeNumeric != null
-                                ? course.gradeNumeric >= 80
-                                  ? 'bg-green-100 text-green-800'
-                                  : course.gradeNumeric >= 70
-                                    ? 'bg-blue-100 text-blue-800'
-                                    : course.gradeNumeric >= 60
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-red-100 text-red-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                            {course.gradeLabel === 'CR' ? 'CR' : course.gradeLabel === 'NCR' ? 'NCR' : course.gradeNumeric != null ? `${course.gradeNumeric}%` : course.gradeLabel}
-                          </span>
-                        )}
+                        <GradeBadge course={course} />
                       </div>
                       <div className="flex items-center gap-1">
                         <Button
@@ -1808,21 +1408,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                   <div className="text-sm text-muted-foreground">{course.name}</div>
                   {(course.gradeLabel || course.gradeNumeric != null) && (
                     <div className="text-sm mt-1">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium
-                        ${course.gradeLabel === 'CR' ? 'bg-green-100 text-green-800'
-                          : course.gradeLabel === 'NCR' ? 'bg-red-100 text-red-800'
-                          : course.gradeNumeric != null
-                            ? course.gradeNumeric >= 80
-                              ? 'bg-green-100 text-green-800'
-                              : course.gradeNumeric >= 70
-                                ? 'bg-blue-100 text-blue-800'
-                                : course.gradeNumeric >= 60
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
-                        {course.gradeLabel === 'CR' ? 'CR' : course.gradeLabel === 'NCR' ? 'NCR' : course.gradeNumeric != null ? `${course.gradeNumeric}%` : course.gradeLabel}
-                      </span>
+                      <GradeBadge course={course} />
                     </div>
                   )}
                 </div>
@@ -1895,156 +1481,65 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         </div>
       </div>
 
-      {/* Confirmation Dialog */}
-      <Dialog
+      <SequenceChangeDialog
         open={dialogOpen}
-        onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) setPendingSequence(null);
+        pendingSequence={pendingSequence}
+        onConfirm={async () => {
+          if (pendingSequence) {
+            const scheduledCourses = courses.filter(c => c.term && c.term !== "Unscheduled");
+            setCourses(prev =>
+              prev.map(course => ({
+                ...course,
+                term: course.term && course.term !== "Unscheduled" ? "Unscheduled" : course.term
+              }))
+            );
+            if (pendingSequence === "CUSTOM") {
+              setCustomTerms(defaultCustomSequence);
+            }
+            setSequence(pendingSequence);
+            setDialogOpen(false);
+            setPendingSequence(null);
+
+            const updatePromises = scheduledCourses.map(course =>
+              updatePlanCourse(planId, course.courseId, { term: "Unscheduled" })
+            );
+            try {
+              await Promise.all(updatePromises);
+              toast({
+                title: "Co-op sequence updated",
+                description: "All courses have been moved to unscheduled. Please redistribute them according to your new sequence.",
+              });
+            } catch (error) {
+              console.error("Failed to update course terms:", error);
+              toast({
+                title: "Error",
+                description: "Failed to update some courses. Please refresh to see the current state.",
+                variant: "destructive"
+              });
+            }
+          }
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangleIcon className="h-5 w-5 text-yellow-500" />
-              Change Co-op Sequence?
-            </DialogTitle>
-            <DialogDescription>
-              Changing your co-op sequence will remove all courses from your schedule. You'll need to
-              redistribute them according to your new sequence pattern.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm font-medium text-muted-foreground">
-              New co-op sequence: <span className="font-bold text-foreground">{pendingSequence ? coopSequenceMap[pendingSequence] : ''}</span>
-            </p>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setDialogOpen(false);
-                setPendingSequence(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              onClick={async () => {
-                if (pendingSequence) {
-                  // Move all scheduled courses to unscheduled and update the backend
-                  const scheduledCourses = courses.filter(c => c.term && c.term !== "Unscheduled");
-                  
-                  // Update local state immediately for responsiveness
-                  setCourses(prev => 
-                    prev.map(course => ({
-                      ...course,
-                      term: course.term && course.term !== "Unscheduled" ? "Unscheduled" : course.term
-                    }))
-                  );
-                  
-                  // Update sequence first
-                  // If changing to custom sequence, initialize with default terms
-                  if (pendingSequence === "CUSTOM") {
-                    setCustomTerms(defaultCustomSequence);
-                  }
-                  setSequence(pendingSequence);
-                  setDialogOpen(false);
-                  setPendingSequence(null);
-                  
-                  // Then update each course in the backend
-                  const updatePromises = scheduledCourses.map(course => 
-                    updatePlanCourse(planId, course.courseId, { term: "Unscheduled" })
-                  );
-                  
-                  try {
-                    await Promise.all(updatePromises);
-                    toast({
-                      title: "Co-op sequence updated",
-                      description: "All courses have been moved to unscheduled. Please redistribute them according to your new sequence.",
-                    });
-                  } catch (error) {
-                    console.error("Failed to update course terms:", error);
-                    toast({
-                      title: "Error",
-                      description: "Failed to update some courses. Please refresh to see the current state.",
-                      variant: "destructive"
-                    });
-                  }
-                }
-              }}
-              className="gap-1"
-            >
-              Confirm Change
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onCancel={() => {
+          setDialogOpen(false);
+          setPendingSequence(null);
+        }}
+      />
 
-      {/* Course Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={(open) => {
-        setEditDialogOpen(open);
-        if (!open) setEditingCourse(null);
-      }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingCourse ? formatCourseCode(editingCourse.code) : 'Edit Course'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingCourse?.name}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Status</label>
-              <Select value={editStatus} onValueChange={setEditStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PLANNED">Planned</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="FAILED">Failed</SelectItem>
-                  <SelectItem value="DROPPED">Dropped</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <CourseStatusDialog
+        open={editDialogOpen}
+        course={editingCourse}
+        status={editStatus}
+        gradeNumeric={editGradeNumeric}
+        isSaving={isSavingEdit}
+        onStatusChange={setEditStatus}
+        onGradeChange={setEditGradeNumeric}
+        onSave={handleSaveEdit}
+        onClose={() => {
+          setEditDialogOpen(false);
+          setEditingCourse(null);
+        }}
+      />
 
-            {editStatus === "COMPLETED" && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Grade (optional)</label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    placeholder="0-100"
-                    value={editGradeNumeric}
-                    onChange={(e) => setEditGradeNumeric(e.target.value)}
-                    className="w-24"
-                  />
-                  <span className="text-sm text-muted-foreground">%</span>
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
-              {isSavingEdit ? "Saving..." : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Course detail dialog */}
       <CourseDetailDialog
         courseCode={detailCourseCode}
         onClose={() => setDetailCourseCode(null)}
