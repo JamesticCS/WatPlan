@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { getCourses, addCourseToPlan, updateAllPlanRequirements } from "@/lib/api";
-import { Course } from "@/types";
-import { CheckCircle2Icon, XIcon } from "lucide-react";
+import { getCourses, addCourseToPlan } from "@/lib/api";
+import { Course, formatCourseCode } from "@/types";
+import { CheckCircle2Icon, XIcon, ThumbsUpIcon, GaugeIcon, StarIcon } from "lucide-react";
 
 export default function AddCoursePage() {
   const params = useParams();
@@ -24,19 +24,13 @@ export default function AddCoursePage() {
   const [selectedCourses, setSelectedCourses] = useState<Course[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [term, setTerm] = useState("");
-  const [termIndex, setTermIndex] = useState<number | undefined>(undefined);
-  
+
   // Get term query parameter from URL if present
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const termParam = searchParams.get('term');
     if (termParam) {
-      // Check if the term includes an index (format: "term-index")
-      const [baseTerm, index] = termParam.split('-');
-      setTerm(baseTerm);
-      if (index) {
-        setTermIndex(parseInt(index));
-      }
+      setTerm(termParam);
     }
   }, []);
 
@@ -89,33 +83,31 @@ export default function AddCoursePage() {
 
     try {
       setIsAdding(true);
-      
-      // Add each selected course sequentially
-      const results = [];
-      const failures = [];
-      
-      for (const course of selectedCourses) {
-        try {
-          const response = await addCourseToPlan(planId, {
+
+      // Add all selected courses in parallel
+      const settled = await Promise.allSettled(
+        selectedCourses.map(course =>
+          addCourseToPlan(planId, {
             courseId: course.id,
             term: term || undefined,
-            termIndex: termIndex,
             status: "PLANNED"
-          });
+          }).then(response => ({ course, response }))
+        )
+      );
 
-          if (response.error) {
-            failures.push({
-              course,
-              error: response.error
-            });
+      const results: Course[] = [];
+      const failures: { course: Course; error: string }[] = [];
+
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          if (result.value.response.error) {
+            failures.push({ course: result.value.course, error: result.value.response.error });
           } else {
-            results.push(course);
+            results.push(result.value.course);
           }
-        } catch (error) {
-          failures.push({
-            course,
-            error: error instanceof Error ? error.message : "Unknown error"
-          });
+        } else {
+          // This shouldn't happen since fetchApi doesn't throw, but handle it
+          failures.push({ course: selectedCourses[0], error: 'Network error' });
         }
       }
 
@@ -126,12 +118,12 @@ export default function AddCoursePage() {
           description: `Added ${results.length} course${results.length > 1 ? 's' : ''} to your plan`,
         });
       }
-      
+
       // Show errors for failed courses
       if (failures.length > 0) {
         const duplicateErrors = failures.filter(f => f.error.includes("already in plan"));
         const otherErrors = failures.filter(f => !f.error.includes("already in plan"));
-        
+
         if (duplicateErrors.length > 0) {
           toast({
             title: "Some Courses Already in Plan",
@@ -139,7 +131,7 @@ export default function AddCoursePage() {
             variant: "destructive",
           });
         }
-        
+
         if (otherErrors.length > 0) {
           toast({
             title: "Error Adding Some Courses",
@@ -149,16 +141,8 @@ export default function AddCoursePage() {
         }
       }
 
-      // Update requirements before returning to plan detail
+      // Navigate back — requirement updates already fire in the background on the server
       if (results.length > 0) {
-        try {
-          // Update all requirements for the plan
-          await updateAllPlanRequirements(planId);
-        } catch (error) {
-          console.error("Error updating requirements:", error);
-        }
-        
-        // Navigate back to plan detail
         router.push(`/plans/${planId}`);
       }
     } catch (error) {
@@ -235,7 +219,7 @@ export default function AddCoursePage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <div className="font-medium">
-                              {course.courseCode} {course.catalogNumber}: {course.title}
+                              {formatCourseCode(course.code)}: {course.name}
                             </div>
                             <Badge className="mt-1 bg-muted text-foreground hover:bg-muted">
                               {course.units} units
@@ -246,9 +230,28 @@ export default function AddCoursePage() {
                           )}
                         </div>
                         {course.description && (
-                          <p className="text-sm text-muted-foreground mt-2">
+                          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
                             {course.description}
                           </p>
+                        )}
+                        {course.uwflowRatingsCount != null && course.uwflowRatingsCount > 0 && (
+                          <div className="flex items-center gap-3 mt-2 text-xs">
+                            <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                              <ThumbsUpIcon className="h-3 w-3" />
+                              {Math.round((course.uwflowLiked ?? 0) * 100)}%
+                            </span>
+                            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                              <GaugeIcon className="h-3 w-3" />
+                              {Math.round((course.uwflowEasy ?? 0) * 100)}%
+                            </span>
+                            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                              <StarIcon className="h-3 w-3" />
+                              {Math.round((course.uwflowUseful ?? 0) * 100)}%
+                            </span>
+                            <span className="text-muted-foreground">
+                              ({course.uwflowRatingsCount} ratings)
+                            </span>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -272,7 +275,7 @@ export default function AddCoursePage() {
                     {selectedCourses.map(course => (
                       <div key={course.id} className="py-1 flex justify-between items-center">
                         <p className="text-sm font-medium">
-                          {course.courseCode} {course.catalogNumber}: {course.title}
+                          {course.code}: {course.name}
                         </p>
                         <Button 
                           variant="ghost" 

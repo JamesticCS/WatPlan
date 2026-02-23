@@ -2,12 +2,21 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { XIcon, PlusIcon, AlertTriangleIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { XIcon, PlusIcon, AlertTriangleIcon, Pencil, CheckCircle2, ListChecks } from "lucide-react";
+import { useMemo, useState, useRef, useEffect, useCallback } from "react";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CourseWithStatus, AcademicTerm, CoopSequence as CoopSequenceType } from "@/types";
-import { updatePlanCourse, removeCourseFromPlan } from "@/lib/api";
+import { CourseWithStatus, AcademicTerm, CoopSequence as CoopSequenceType, Warning, formatCourseCode } from "@/types";
+import { updatePlanCourse, removeCourseFromPlan, getPlanWarnings } from "@/lib/api";
+import { CourseWarningIndicator } from "@/components/plan/course-warning-indicator";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -18,6 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PlanTranscriptUpload } from "@/components/plan/plan-transcript-upload";
+import { CourseDetailDialog } from "@/components/plan/course-detail-dialog";
 
 interface PlanCourseListProps {
   courses: CourseWithStatus[];
@@ -62,12 +72,28 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
   const [customTerms, setCustomTerms] = useState<AcademicTerm[]>(defaultCustomSequence);
   const [editingTermId, setEditingTermId] = useState<string | null>(null);
   const [newTermName, setNewTermName] = useState("");
+  // Course edit dialog state
+  const [editingCourse, setEditingCourse] = useState<CourseWithStatus | null>(null);
+  const [editStatus, setEditStatus] = useState<string>("PLANNED");
+  const [editGradeNumeric, setEditGradeNumeric] = useState<string>("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  // Bulk status dialog state
+  const [bulkStatusTermId, setBulkStatusTermId] = useState<string | null>(null);
+  const [isSavingBulk, setIsSavingBulk] = useState(false);
+  // Warnings state
+  const [courseWarnings, setCourseWarnings] = useState<Map<string, Warning[]>>(new Map());
+  // Course detail dialog state
+  const [detailCourseCode, setDetailCourseCode] = useState<string | null>(null);
+  // Ref to distinguish click from drag
+  const dragStartedRef = useRef(false);
   const { toast } = useToast();
   
   // Function to handle drag start
   const handleDragStart = (e: React.DragEvent, course: CourseWithStatus) => {
-    // Store course ID for drop handling
-    e.dataTransfer.setData("courseId", course.id);
+    dragStartedRef.current = true;
+    // Store the courseId (Course table ID) for API calls on drop
+    e.dataTransfer.setData("courseId", course.courseId);
     setDraggedCourse(course);
     
     // Set effectAllowed to move to indicate we're moving, not copying
@@ -84,7 +110,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       const elem = document.createElement('div');
       elem.classList.add('drag-ghost');
       elem.style.position = "absolute";
-      elem.style.width = `${e.currentTarget.offsetWidth}px`;
+      elem.style.width = `${(e.currentTarget as HTMLElement).offsetWidth}px`;
       elem.style.padding = "12px";
       elem.style.background = "white";
       elem.style.borderRadius = "6px";
@@ -97,12 +123,12 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       // Add content to the drag ghost
       const titleEl = document.createElement('div');
       titleEl.style.fontWeight = "600";
-      titleEl.textContent = `${course.courseCode} ${course.catalogNumber}`;
-      
+      titleEl.textContent = formatCourseCode(course.code);
+
       const descEl = document.createElement('div');
       descEl.style.fontSize = "0.875rem";
       descEl.style.opacity = "0.7";
-      descEl.textContent = course.title;
+      descEl.textContent = course.name;
       
       elem.appendChild(titleEl);
       elem.appendChild(descEl);
@@ -140,122 +166,120 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       (el as HTMLElement).classList.remove('term-column-droppable');
     });
     
-    const courseId = e.dataTransfer.getData("courseId");
-    if (!courseId) {
+    const droppedCourseId = e.dataTransfer.getData("courseId");
+    if (!droppedCourseId) {
       console.error('No course ID in drop data');
       return;
     }
-    
+
     // Store the draggedCourse reference locally instead of depending on state
     // This prevents potential "Cannot update during an existing state transition" errors
-    const localDraggedCourse = courses.find(c => c.id === courseId);
+    const localDraggedCourse = courses.find(c => c.courseId === droppedCourseId);
     if (!localDraggedCourse) {
-      console.error('Course not found:', courseId);
+      console.error('Course not found:', droppedCourseId);
       return;
     }
+    const courseId = localDraggedCourse.courseId;
     
     // Extract the base term name and index from targetTermId (format: "term-index")
     const [targetTerm, targetTermIndex] = targetTermId.split('-');
-    
+
     // Get current unique term id for the dragged course
-    const currentTermId = localDraggedCourse.termIndex !== undefined 
-      ? `${localDraggedCourse.term}-${localDraggedCourse.termIndex}` 
+    const currentTermId = localDraggedCourse.displayOrder !== undefined
+      ? `${localDraggedCourse.term}-${localDraggedCourse.displayOrder}`
       : localDraggedCourse.term;
     
     // If dropping in same term and we have position info, this is a reorder
     if (currentTermId === targetTermId && targetPosition !== undefined) {
       // Reorder courses within the same term
       const termCourses = [...coursesByTerm[targetTermId]];
-      const currentIndex = termCourses.findIndex(c => c.id === courseId);
-      
+      const currentIndex = termCourses.findIndex(c => c.courseId === courseId);
+
       // Remove from current position
       if (currentIndex !== -1) {
         const [removed] = termCourses.splice(currentIndex, 1);
-        
+
         // Insert at new position, accounting for the removed item
         const newPosition = targetPosition > currentIndex ? targetPosition - 1 : targetPosition;
         termCourses.splice(newPosition, 0, removed);
-        
+
         // Update all courses (reorder only)
-        const newCourses = courses.filter(course => 
-          course.id !== courseId || 
-          (course.term !== localDraggedCourse.term && course.termIndex !== localDraggedCourse.termIndex)
+        const newCourses = courses.filter(course =>
+          course.courseId !== courseId ||
+          (course.term !== localDraggedCourse.term && course.displayOrder !== localDraggedCourse.displayOrder)
         );
         newCourses.push(...termCourses);
         setCourses(newCourses);
         return;
       }
     }
-    
+
     // If we're just dropping in the same term with no position change, do nothing
     if (currentTermId === targetTermId && targetPosition === undefined) return;
-    
-    // Check if there is already a course with the same ID or the same course code + catalog number in the target term
-    // This prevents duplicating the same course in a term
-    const duplicateCourses = courses.filter(course => 
-      course.id !== courseId && // Not the course we're moving
-      ((course.courseCode === localDraggedCourse.courseCode && 
-        course.catalogNumber === localDraggedCourse.catalogNumber) ||
-        course.id === localDraggedCourse.id) && // Check both course ID and course code+catalog
-      course.term === targetTerm && 
-      course.termIndex === parseInt(targetTermIndex)
+
+    // Check if there is already a course with the same code in the target term
+    const duplicateCourses = courses.filter(course =>
+      course.courseId !== courseId && // Not the course we're moving
+      course.code === localDraggedCourse.code &&
+      course.term === targetTerm &&
+      course.displayOrder === parseInt(targetTermIndex)
     );
-    
+
     if (duplicateCourses.length > 0) {
       toast({
         title: "Cannot move course",
-        description: `${localDraggedCourse.courseCode} ${localDraggedCourse.catalogNumber} is already in this term`,
+        description: `${formatCourseCode(localDraggedCourse.code)} is already in this term`,
         variant: "destructive",
       });
       return;
     }
-    
+
     // Update the local state immediately for a responsive feel
-    setCourses(prevCourses => 
-      prevCourses.map(course => 
-        course.id === courseId 
-          ? { 
-              ...course, 
+    setCourses(prevCourses =>
+      prevCourses.map(course =>
+        course.courseId === courseId
+          ? {
+              ...course,
               term: targetTerm,
-              termIndex: parseInt(targetTermIndex), 
-              justDropped: true 
-            } 
+              displayOrder: parseInt(targetTermIndex),
+              justDropped: true
+            }
           : course
       )
     );
-    
+
     // Remove the justDropped flag after animation completes
     setTimeout(() => {
-      setCourses(prevCourses => 
-        prevCourses.map(course => 
-          course.id === courseId 
-            ? { ...course, justDropped: false } 
+      setCourses(prevCourses =>
+        prevCourses.map(course =>
+          course.courseId === courseId
+            ? { ...course, justDropped: false }
             : course
         )
       );
     }, 600);
-    
+
     try {
-      // Call the API to update the course term, including the term index for uniqueness
-      const response = await updatePlanCourse(planId, courseId, { 
+      // Call the API to update the course term, including the display order for uniqueness
+      const response = await updatePlanCourse(planId, courseId, {
         term: targetTerm,
-        termIndex: parseInt(targetTermIndex)
+        displayOrder: parseInt(targetTermIndex)
       });
-      
+
       if (response.error) {
         // If there's an error, revert the local state
-        setCourses(prevCourses => 
-          prevCourses.map(course => 
-            course.id === courseId 
-              ? { 
-                  ...course, 
-                  term: draggedCourse.term,
-                  termIndex: draggedCourse.termIndex 
-                } 
+        setCourses(prevCourses =>
+          prevCourses.map(course =>
+            course.courseId === courseId
+              ? {
+                  ...course,
+                  term: localDraggedCourse.term,
+                  displayOrder: localDraggedCourse.displayOrder
+                }
               : course
           )
         );
-        
+
         toast({
           title: "Error",
           description: `Failed to update course term: ${response.error}`,
@@ -263,26 +287,26 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         });
       } else {
         // Success toast (optional)
-        const termDisplay = targetTerm === "COOP" 
-          ? `Work Term ${activeTerms.slice(0, parseInt(targetTermIndex)).filter(t => t === "COOP").length + 1}` 
+        const termDisplay = targetTerm === "COOP"
+          ? `Work Term ${activeTerms.slice(0, parseInt(targetTermIndex)).filter(t => t === "COOP").length + 1}`
           : targetTerm;
-        
+
         toast({
           title: "Success",
-          description: `Moved ${localDraggedCourse.courseCode} ${localDraggedCourse.catalogNumber} to ${termDisplay}`,
+          description: `Moved ${formatCourseCode(localDraggedCourse.code)} to ${termDisplay}`,
         });
       }
     } catch (error) {
       console.error('Error updating course term:', error);
       // Revert the local state on error
-      setCourses(prevCourses => 
-        prevCourses.map(course => 
-          course.id === courseId 
-            ? { 
-                ...course, 
+      setCourses(prevCourses =>
+        prevCourses.map(course =>
+          course.courseId === courseId
+            ? {
+                ...course,
                 term: localDraggedCourse.term,
-                termIndex: localDraggedCourse.termIndex 
-              } 
+                displayOrder: localDraggedCourse.displayOrder
+              }
             : course
         )
       );
@@ -327,6 +351,66 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
     }));
   }, [activeTerms]);
   
+  // Fetch warnings (debounced)
+  const fetchWarnings = useCallback(async () => {
+    const response = await getPlanWarnings(planId, activeTerms);
+    if (response.data?.warnings) {
+      const map = new Map<string, Warning[]>();
+      for (const cw of response.data.warnings) {
+        map.set(cw.courseId, cw.warnings);
+      }
+      setCourseWarnings(map);
+    }
+  }, [planId, activeTerms]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchWarnings();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [fetchWarnings, courses]);
+
+  const handleDismissWarning = useCallback(async (courseId: string, warningType: string) => {
+    // Optimistic update
+    setCourseWarnings(prev => {
+      const next = new Map(prev);
+      const warnings = next.get(courseId);
+      if (warnings) {
+        next.set(courseId, warnings.map(w =>
+          w.type === warningType ? { ...w, dismissed: true } : w
+        ));
+      }
+      return next;
+    });
+    // Persist: get current dismissed list and add the new type
+    const currentWarnings = courseWarnings.get(courseId) || [];
+    const currentDismissed: string[] = currentWarnings.filter(w => w.dismissed).map(w => w.type as string);
+    if (!currentDismissed.includes(warningType)) {
+      currentDismissed.push(warningType);
+    }
+    await updatePlanCourse(planId, courseId, { dismissedWarnings: currentDismissed });
+  }, [planId, courseWarnings]);
+
+  const handleRestoreWarning = useCallback(async (courseId: string, warningType: string) => {
+    // Optimistic update
+    setCourseWarnings(prev => {
+      const next = new Map(prev);
+      const warnings = next.get(courseId);
+      if (warnings) {
+        next.set(courseId, warnings.map(w =>
+          w.type === warningType ? { ...w, dismissed: false } : w
+        ));
+      }
+      return next;
+    });
+    // Persist: remove from dismissed list
+    const currentWarnings = courseWarnings.get(courseId) || [];
+    const newDismissed = currentWarnings
+      .filter(w => w.dismissed && w.type !== warningType)
+      .map(w => w.type);
+    await updatePlanCourse(planId, courseId, { dismissedWarnings: newDismissed });
+  }, [planId, courseWarnings]);
+
   // Functions for custom sequence management
   const addCustomTerm = (termType: AcademicTerm = "1A") => {
     // Add the term with animation
@@ -363,15 +447,15 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
     
     if (termCourses.length > 0) {
       // Move courses to unscheduled
-      const courseUpdates = termCourses.map(course => 
-        updatePlanCourse(planId, course.id, { term: "Unscheduled", termIndex: null })
+      const courseUpdates = termCourses.map(course =>
+        updatePlanCourse(planId, course.courseId, { term: "Unscheduled", displayOrder: 0 })
       );
-      
+
       // Update local state
-      setCourses(prevCourses => 
-        prevCourses.map(course => 
+      setCourses(prevCourses =>
+        prevCourses.map(course =>
           termCourses.some(c => c.id === course.id)
-            ? { ...course, term: "Unscheduled", termIndex: null }
+            ? { ...course, term: "Unscheduled", displayOrder: 0 }
             : course
         )
       );
@@ -566,9 +650,9 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         // Handle unscheduled courses
         grouped['Unscheduled'].push(course);
       } else {
-        // Create unique term identifier based on term and termIndex
-        const uniqueTermId = course.termIndex !== undefined
-          ? `${course.term}-${course.termIndex}`
+        // Create unique term identifier based on term and displayOrder
+        const uniqueTermId = course.displayOrder !== undefined
+          ? `${course.term}-${course.displayOrder}`
           : null;
           
         // First check if we have an exact match for the term with its index
@@ -580,27 +664,27 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
           if (termMatch) {
             grouped[termMatch.id].push(course);
             
-            // Update the course's termIndex to match the found term
-            // This prevents duplications by ensuring consistent termIndex
-            if (course.termIndex === undefined || course.termIndex !== parseInt(termMatch.id.split('-')[1])) {
+            // Update the course's displayOrder to match the found term
+            // This prevents duplications by ensuring consistent displayOrder
+            if (course.displayOrder === undefined || course.displayOrder !== parseInt(termMatch.id.split('-')[1])) {
               const termParts = termMatch.id.split('-');
-              const termIndex = parseInt(termParts[1]);
-              
-              // Update local state with correct termIndex
-              setCourses(prevCourses => 
-                prevCourses.map(c => 
-                  c.id === course.id 
-                    ? { ...c, termIndex: termIndex } 
+              const displayOrder = parseInt(termParts[1]);
+
+              // Update local state with correct displayOrder
+              setCourses(prevCourses =>
+                prevCourses.map(c =>
+                  c.id === course.id
+                    ? { ...c, displayOrder: displayOrder }
                     : c
                 )
               );
-              
+
               // Update in backend to ensure consistency
-              updatePlanCourse(planId, course.id, { 
+              updatePlanCourse(planId, course.courseId, {
                 term: course.term,
-                termIndex: termIndex
+                displayOrder: displayOrder
               }).catch(error => {
-                console.error('Error updating course term index:', error);
+                console.error('Error updating course display order:', error);
               });
             }
           } else {
@@ -612,7 +696,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
     });
     
     // Find and report any duplicate courses in terms
-    const duplicatesFound = [];
+    const duplicatesFound: { course: CourseWithStatus; termId: string; originalCourse: CourseWithStatus }[] = [];
     
     Object.keys(grouped).forEach(termId => {
       if (termId === 'Unscheduled') return; // Allow duplicates in unscheduled
@@ -622,7 +706,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
       
       // Find any duplicates without modifying the groups yet
       grouped[termId].forEach(course => {
-        const courseIdentifier = `${course.courseCode}-${course.catalogNumber}`;
+        const courseIdentifier = course.code;
         
         if (courseCodes.has(courseIdentifier)) {
           duplicatesFound.push({
@@ -652,9 +736,9 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         });
         
         // Silently update the backend to match our UI state
-        updatePlanCourse(planId, course.id, { 
+        updatePlanCourse(planId, course.courseId, {
           term: "Unscheduled",
-          termIndex: null
+          displayOrder: 0
         }).catch(error => {
           console.error('Error fixing duplicate course:', error);
         });
@@ -681,6 +765,100 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         return <Badge className="bg-blue-500 hover:bg-blue-600">In Progress</Badge>;
       case "PLANNED":
         return <Badge variant="outline">Planned</Badge>;
+      case "FAILED":
+        return <Badge className="bg-red-500 hover:bg-red-600">Failed</Badge>;
+      case "DROPPED":
+        return <Badge className="bg-orange-500 hover:bg-orange-600">Dropped</Badge>;
+      case "BACKLOG":
+        return <Badge variant="outline" className="text-muted-foreground">Backlog</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const openEditDialog = (course: CourseWithStatus) => {
+    setEditingCourse(course);
+    setEditStatus(course.status);
+    setEditGradeNumeric(course.gradeNumeric != null ? String(course.gradeNumeric) : "");
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingCourse) return;
+    setIsSavingEdit(true);
+
+    let gradeLabel: string | undefined = undefined;
+    let gradeNumeric: number | undefined = undefined;
+
+    if (editStatus === "COMPLETED" && editGradeNumeric.trim()) {
+      const num = parseFloat(editGradeNumeric);
+      if (!isNaN(num) && num >= 0 && num <= 100) {
+        gradeNumeric = num;
+        gradeLabel = String(num);
+      }
+    }
+
+    try {
+      const response = await updatePlanCourse(planId, editingCourse.courseId, {
+        status: editStatus,
+        gradeLabel: gradeLabel ?? null as any,
+        gradeNumeric: gradeNumeric ?? null as any,
+      });
+
+      if (response.error) {
+        toast({ title: "Error", description: response.error, variant: "destructive" });
+        return;
+      }
+
+      // Update local state
+      setCourses(prev =>
+        prev.map(c =>
+          c.courseId === editingCourse.courseId
+            ? { ...c, status: editStatus as any, gradeLabel: gradeLabel ?? null, gradeNumeric: gradeNumeric ?? null }
+            : c
+        )
+      );
+
+      setEditDialogOpen(false);
+      setEditingCourse(null);
+      toast({ title: "Course updated", description: `Updated ${formatCourseCode(editingCourse.code)}` });
+    } catch {
+      toast({ title: "Error", description: "Failed to update course", variant: "destructive" });
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  const handleBulkStatus = async (termId: string, newStatus: string) => {
+    const termCourses = coursesByTerm[termId];
+    if (!termCourses || termCourses.length === 0) return;
+    setIsSavingBulk(true);
+
+    // Update local state immediately
+    setCourses(prev =>
+      prev.map(c =>
+        termCourses.some(tc => tc.courseId === c.courseId)
+          ? { ...c, status: newStatus as any }
+          : c
+      )
+    );
+
+    // Update all courses in parallel
+    try {
+      await Promise.all(
+        termCourses.map(c =>
+          updatePlanCourse(planId, c.courseId, { status: newStatus })
+        )
+      );
+      toast({
+        title: "Term updated",
+        description: `Marked ${termCourses.length} course${termCourses.length > 1 ? 's' : ''} as ${newStatus === 'COMPLETED' ? 'Completed' : newStatus === 'IN_PROGRESS' ? 'In Progress' : 'Planned'}`,
+      });
+    } catch {
+      toast({ title: "Error", description: "Failed to update some courses", variant: "destructive" });
+    } finally {
+      setIsSavingBulk(false);
+      setBulkStatusTermId(null);
     }
   };
   
@@ -714,9 +892,17 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
           cursor: grabbing;
         }
         
-        /* Fix for Safari - but exclude action buttons */
-        .course-item > *:not(.remove-course-btn):not(button) {
+        /* Fix for Safari - disable pointer-events on card contents so drag works */
+        .course-item > * {
           pointer-events: none;
+        }
+
+        /* Re-enable pointer-events on interactive elements inside cards */
+        .course-item .course-item-btn,
+        .course-item .course-item-btn * {
+          pointer-events: auto !important;
+          position: relative;
+          z-index: 10;
         }
         
         .course-item-dragging {
@@ -966,28 +1152,16 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
         }
         
         /* Remove course button hover effect */
-        .remove-course-btn {
-          cursor: pointer !important;
-          z-index: 10 !important;
-          position: relative !important;
-          pointer-events: auto !important;
-        }
-        
         .remove-course-btn:hover {
           background-color: rgba(239, 68, 68, 0.1) !important;
         }
-        
+
         .remove-course-btn:hover svg {
           color: rgb(239, 68, 68) !important;
         }
-        
+
         .remove-course-btn:active {
           background-color: rgba(239, 68, 68, 0.2) !important;
-        }
-        
-        /* Override the parent pointer-events rule for remove buttons */
-        .course-item .remove-course-btn * {
-          pointer-events: auto !important;
         }
         
         /* Animation for course removal */
@@ -1058,17 +1232,17 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                     
                     if (data.planCourses) {
                       // Map API data to CourseWithStatus format
-                      const updatedCourses = data.planCourses.map(pc => ({
+                      const updatedCourses = data.planCourses.map((pc: any) => ({
                         id: pc.id,
                         courseId: pc.courseId,
-                        courseCode: pc.course.courseCode,
-                        catalogNumber: pc.course.catalogNumber,
-                        title: pc.course.title,
+                        code: pc.course.code,
+                        number: pc.course.number,
+                        name: pc.course.name,
                         units: pc.course.units,
                         term: pc.term || "Unscheduled",
-                        termIndex: pc.termIndex,
+                        displayOrder: pc.displayOrder,
                         status: pc.status,
-                        grade: pc.grade
+                        gradeLabel: pc.gradeLabel
                       }));
                       
                       // Update state with the refreshed courses
@@ -1228,11 +1402,11 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                     )}
                     {sequence !== "CUSTOM" && coursesByTerm[id]?.length > 0 && (
                       <span className="text-xs font-medium py-0.5 px-2 mt-1 rounded-md bg-emerald-500/20 text-emerald-700 animate-fadeIn ml-0 inline-block">
-                        {coursesByTerm[id].reduce((sum, course) => sum + (parseFloat(course.units) || 0), 0).toFixed(1)} units
+                        {coursesByTerm[id].reduce((sum, course) => sum + (course.units || 0), 0).toFixed(1)} units
                       </span>
                     )}
                   </div>
-                  
+
                   {sequence === "CUSTOM" && (
                     <div className="flex items-center">
                       {index > 0 && (
@@ -1287,6 +1461,17 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                       >
                         <XIcon className="h-4 w-4" />
                       </Button>
+                      {coursesByTerm[id]?.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 hover:bg-primary-foreground/20"
+                          onClick={() => setBulkStatusTermId(bulkStatusTermId === id ? null : id)}
+                          title="Set status for all courses in this term"
+                        >
+                          <ListChecks className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Link href={`/plans/${planId}/add-course?term=${id}`}>
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 hover:bg-primary-foreground/20">
                           <PlusIcon className="h-4 w-4" />
@@ -1294,30 +1479,64 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                       </Link>
                     </div>
                   )}
-                  
+
                   {sequence !== "CUSTOM" && (
-                    <Link href={`/plans/${planId}/add-course?term=${id}`}>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
-                        <PlusIcon className="h-4 w-4" />
-                      </Button>
-                    </Link>
+                    <div className="flex items-center gap-0.5">
+                      {coursesByTerm[id]?.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 hover:bg-primary-foreground/20"
+                          onClick={() => setBulkStatusTermId(bulkStatusTermId === id ? null : id)}
+                          title="Set status for all courses in this term"
+                        >
+                          <ListChecks className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Link href={`/plans/${planId}/add-course?term=${id}`}>
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 hover:bg-primary-foreground/20">
+                          <PlusIcon className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
                   )}
                 </div>
                 
                 {sequence === "CUSTOM" && coursesByTerm[id]?.length > 0 && (
                   <div className="mt-1">
                     <span className="text-xs font-medium py-0.5 px-2 rounded-md bg-emerald-500/20 text-emerald-700 animate-fadeIn">
-                      {coursesByTerm[id].reduce((sum, course) => sum + (parseFloat(course.units) || 0), 0).toFixed(1)} units
+                      {coursesByTerm[id].reduce((sum, course) => sum + (course.units || 0), 0).toFixed(1)} units
                     </span>
                   </div>
                 )}
               </div>
+              {bulkStatusTermId === id && (
+                <div className="px-3 py-2 bg-muted/50 border-b flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground">Set all to:</span>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={isSavingBulk}
+                    onClick={() => handleBulkStatus(id, 'PLANNED')}>Planned</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={isSavingBulk}
+                    onClick={() => handleBulkStatus(id, 'IN_PROGRESS')}>In Progress</Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={isSavingBulk}
+                    onClick={() => handleBulkStatus(id, 'COMPLETED')}>Completed</Button>
+                </div>
+              )}
               <div className="divide-y">
                 {coursesByTerm[id]?.map((course, courseIndex) => (
-                  <div 
-                    key={`${course.id}-${id}-${courseIndex}`} 
-                    className={`p-3 hover:bg-muted/50 transition-colors course-item ${course.justDropped ? 'course-item-dropped' : ''} ${course.isRemoving ? 'course-item-removing' : ''}`}
-                    draggable 
+                  <div
+                    key={`${course.id}-${id}-${courseIndex}`}
+                    className={`p-3 hover:bg-muted/50 transition-colors cursor-pointer course-item ${course.justDropped ? 'course-item-dropped' : ''} ${(course as any).isRemoving ? 'course-item-removing' : ''}`}
+                    draggable
+                    onClick={(e) => {
+                      if (dragStartedRef.current) {
+                        dragStartedRef.current = false;
+                        return;
+                      }
+                      // Don't open edit dialog if clicking interactive buttons
+                      const target = e.target as HTMLElement;
+                      if (target.closest('.course-item-btn')) return;
+                      openEditDialog(course);
+                    }}
                     onDragStart={(e) => {
                       handleDragStart(e, course);
                       e.currentTarget.classList.add('course-item-dragging');
@@ -1370,61 +1589,81 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                       }, 0);
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="font-medium">{course.courseCode} {course.catalogNumber}</div>
-                      {getStatusBadge(course.status)}
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="font-medium hover:underline hover:text-primary transition-colors course-item-btn"
+                          onClick={(e) => { e.stopPropagation(); setDetailCourseCode(course.code); }}
+                          draggable={false}
+                        >
+                          {formatCourseCode(course.code)}
+                        </button>
+                        {getStatusBadge(course.status)}
+                      </div>
+                      {courseWarnings.get(course.courseId)?.some(w => !w.dismissed) ? (
+                        <div className="course-item-btn" draggable={false}>
+                          <CourseWarningIndicator
+                            warnings={courseWarnings.get(course.courseId)!}
+                            onDismiss={(type) => handleDismissWarning(course.courseId, type)}
+                            onRestore={(type) => handleRestoreWarning(course.courseId, type)}
+                          />
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="text-sm text-muted-foreground truncate">{course.title}</div>
+                    <div className="text-sm text-muted-foreground truncate">{course.name}</div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="text-sm flex items-center gap-2">
-                        <span>{course.units} units</span>
-                        {course.grade && (
-                          <span className={`px-2 py-0.5 rounded-md text-xs font-medium 
-                            ${parseFloat(course.grade) >= 80 || course.grade === 'A+' || course.grade === 'A' ? 
-                              'bg-green-100 text-green-800' : 
-                              parseFloat(course.grade) >= 70 || course.grade === 'B+' || course.grade === 'B' ? 
-                                'bg-blue-100 text-blue-800' : 
-                                parseFloat(course.grade) >= 60 || course.grade === 'C+' || course.grade === 'C' ? 
-                                  'bg-yellow-100 text-yellow-800' : 
-                                  'bg-red-100 text-red-800'
+                        <span>{Number(course.units).toFixed(1)} units</span>
+                        {(course.gradeLabel || course.gradeNumeric != null) && (
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-medium
+                            ${course.gradeLabel === 'CR' ? 'bg-green-100 text-green-800'
+                              : course.gradeLabel === 'NCR' ? 'bg-red-100 text-red-800'
+                              : course.gradeNumeric != null
+                                ? course.gradeNumeric >= 80
+                                  ? 'bg-green-100 text-green-800'
+                                  : course.gradeNumeric >= 70
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : course.gradeNumeric >= 60
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-red-100 text-red-800'
+                                : 'bg-gray-100 text-gray-800'
                             }`}>
-                            Grade: {course.grade}
+                            {course.gradeLabel === 'CR' ? 'CR' : course.gradeLabel === 'NCR' ? 'NCR' : course.gradeNumeric != null ? `${course.gradeNumeric}%` : course.gradeLabel}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-1">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-7 w-7 remove-course-btn"
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 course-item-btn remove-course-btn"
                           onClick={async (e) => {
                             e.stopPropagation();
                             e.preventDefault(); // Prevent any unexpected behavior
                             
                             try {
                               // Store course info before removing for use in toast
-                              const courseCode = course.courseCode;
-                              const catalogNumber = course.catalogNumber;
-                              const courseId = course.id;
-                              
+                              const courseDisplay = formatCourseCode(course.code);
+                              const cId = course.courseId;
+
                               // Flag the course for animation first
-                              setCourses(prevCourses => 
-                                prevCourses.map(c => 
-                                  c.id === courseId 
-                                    ? { ...c, isRemoving: true } 
+                              setCourses(prevCourses =>
+                                prevCourses.map(c =>
+                                  c.courseId === cId
+                                    ? { ...c, isRemoving: true }
                                     : c
                                 )
                               );
-                              
+
                               // We rely on the class-based animation instead of inline style
-                              
+
                               // Wait for animation to play before removing from state
                               setTimeout(async () => {
                                 // Remove from local state
-                                setCourses(prevCourses => prevCourses.filter(c => c.id !== courseId));
-                                
+                                setCourses(prevCourses => prevCourses.filter(c => c.courseId !== cId));
+
                                 // Call API to completely remove the course from the plan
-                                const response = await removeCourseFromPlan(planId, courseId);
+                                const response = await removeCourseFromPlan(planId, cId);
                                 if (response.error) {
                                   // If API fails, add the course back
                                   setCourses(prevCourses => [...prevCourses, course]);
@@ -1433,7 +1672,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                                 
                                 toast({
                                   title: "Course removed",
-                                  description: `Removed ${courseCode} ${catalogNumber} from your plan`,
+                                  description: `Removed ${courseDisplay} from your plan`,
                                 });
                               }, 300); // Slightly shorter than animation duration
                             } catch (error) {
@@ -1495,8 +1734,15 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
             coursesByTerm['Unscheduled'].map((course, index) => (
               <div 
                 key={`${course.id}-Unscheduled-${index}`} 
-                className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-muted/50 transition-colors course-item ${course.justDropped ? 'course-item-dropped' : ''} ${course.isRemoving ? 'course-item-removing' : ''}`}
-                draggable 
+                className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between hover:bg-muted/50 transition-colors cursor-pointer course-item ${course.justDropped ? 'course-item-dropped' : ''} ${(course as any).isRemoving ? 'course-item-removing' : ''}`}
+                draggable
+                onClick={() => {
+                  if (dragStartedRef.current) {
+                    dragStartedRef.current = false;
+                    return;
+                  }
+                  openEditDialog(course);
+                }}
                 onDragStart={(e) => {
                   handleDragStart(e, course);
                   e.currentTarget.classList.add('course-item-dragging');
@@ -1550,67 +1796,76 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <div className="font-medium">{course.courseCode} {course.catalogNumber}</div>
+                    <button
+                      className="font-medium hover:underline hover:text-primary transition-colors course-item-btn"
+                      onClick={(e) => { e.stopPropagation(); setDetailCourseCode(course.code); }}
+                      draggable={false}
+                    >
+                      {formatCourseCode(course.code)}
+                    </button>
                     {getStatusBadge(course.status)}
                   </div>
-                  <div className="text-sm text-muted-foreground">{course.title}</div>
-                  {course.grade && (
+                  <div className="text-sm text-muted-foreground">{course.name}</div>
+                  {(course.gradeLabel || course.gradeNumeric != null) && (
                     <div className="text-sm mt-1">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium 
-                        ${parseFloat(course.grade) >= 80 || course.grade === 'A+' || course.grade === 'A' ? 
-                          'bg-green-100 text-green-800' : 
-                          parseFloat(course.grade) >= 70 || course.grade === 'B+' || course.grade === 'B' ? 
-                            'bg-blue-100 text-blue-800' : 
-                            parseFloat(course.grade) >= 60 || course.grade === 'C+' || course.grade === 'C' ? 
-                              'bg-yellow-100 text-yellow-800' : 
-                              'bg-red-100 text-red-800'
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-medium
+                        ${course.gradeLabel === 'CR' ? 'bg-green-100 text-green-800'
+                          : course.gradeLabel === 'NCR' ? 'bg-red-100 text-red-800'
+                          : course.gradeNumeric != null
+                            ? course.gradeNumeric >= 80
+                              ? 'bg-green-100 text-green-800'
+                              : course.gradeNumeric >= 70
+                                ? 'bg-blue-100 text-blue-800'
+                                : course.gradeNumeric >= 60
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-red-100 text-red-800'
+                            : 'bg-gray-100 text-gray-800'
                         }`}>
-                        Grade: {course.grade}
+                        {course.gradeLabel === 'CR' ? 'CR' : course.gradeLabel === 'NCR' ? 'NCR' : course.gradeNumeric != null ? `${course.gradeNumeric}%` : course.gradeLabel}
                       </span>
                     </div>
                   )}
                 </div>
                 <div className="flex items-center gap-2 mt-3 sm:mt-0">
-                  <Button 
-                    variant="ghost" 
+                  <Button
+                    variant="ghost"
                     size="icon"
-                    className="remove-course-btn"
+                    className="course-item-btn remove-course-btn"
                     onClick={async (e) => {
                       e.stopPropagation();
                       e.preventDefault(); // Prevent any unexpected behavior
                       try {
                         // Store course info before removing for use in toast
-                        const courseCode = course.courseCode;
-                        const catalogNumber = course.catalogNumber;
-                        const courseId = course.id;
-                        
+                        const courseDisplay = formatCourseCode(course.code);
+                        const cId = course.courseId;
+
                         // Flag the course for animation first
-                        setCourses(prevCourses => 
-                          prevCourses.map(c => 
-                            c.id === courseId 
-                              ? { ...c, isRemoving: true } 
+                        setCourses(prevCourses =>
+                          prevCourses.map(c =>
+                            c.courseId === cId
+                              ? { ...c, isRemoving: true }
                               : c
                           )
                         );
-                        
+
                         // We rely on the class-based animation instead of inline style
-                        
+
                         // Wait for animation to play before removing from state
                         setTimeout(async () => {
                           // Remove from local state
-                          setCourses(prevCourses => prevCourses.filter(c => c.id !== courseId));
-                          
+                          setCourses(prevCourses => prevCourses.filter(c => c.courseId !== cId));
+
                           // Call API to completely remove the course from the plan
-                          const response = await removeCourseFromPlan(planId, courseId);
+                          const response = await removeCourseFromPlan(planId, cId);
                           if (response.error) {
                             // If API fails, add the course back
                             setCourses(prevCourses => [...prevCourses, course]);
                             throw new Error(response.error);
                           }
-                          
+
                           toast({
                             title: "Course removed",
-                            description: `Removed ${courseCode} ${catalogNumber} from your plan`,
+                            description: `Removed ${courseDisplay} from your plan`,
                           });
                         }, 300); // Slightly shorter than animation duration
                       } catch (error) {
@@ -1702,7 +1957,7 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
                   
                   // Then update each course in the backend
                   const updatePromises = scheduledCourses.map(course => 
-                    updatePlanCourse(planId, course.id, { term: "Unscheduled" })
+                    updatePlanCourse(planId, course.courseId, { term: "Unscheduled" })
                   );
                   
                   try {
@@ -1728,6 +1983,72 @@ export function PlanCourseList({ courses: initialCourses }: PlanCourseListProps)
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Course Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={(open) => {
+        setEditDialogOpen(open);
+        if (!open) setEditingCourse(null);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editingCourse ? formatCourseCode(editingCourse.code) : 'Edit Course'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCourse?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Status</label>
+              <Select value={editStatus} onValueChange={setEditStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PLANNED">Planned</SelectItem>
+                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                  <SelectItem value="COMPLETED">Completed</SelectItem>
+                  <SelectItem value="FAILED">Failed</SelectItem>
+                  <SelectItem value="DROPPED">Dropped</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editStatus === "COMPLETED" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Grade (optional)</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="0-100"
+                    value={editGradeNumeric}
+                    onChange={(e) => setEditGradeNumeric(e.target.value)}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-muted-foreground">%</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
+              {isSavingEdit ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Course detail dialog */}
+      <CourseDetailDialog
+        courseCode={detailCourseCode}
+        onClose={() => setDetailCourseCode(null)}
+      />
     </div>
   );
 }

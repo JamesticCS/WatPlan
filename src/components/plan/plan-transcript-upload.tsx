@@ -384,8 +384,8 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
     ];
     
     // Detect term sections in the text by looking at contextual clues in lines
-    const termSections = [];
-    let currentTerm = null;
+    const termSections: { term: string; startLine: number; endLine: number | null }[] = [];
+    let currentTerm: string | null = null;
     let inCoursesSection = false;
     
     // First pass: find and mark term section boundaries in the original lines
@@ -461,7 +461,7 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
     }
     
     // Sort term sections by the expected order of terms
-    const termOrder = {"1A": 0, "1B": 1, "2A": 2, "2B": 3, "3A": 4, "3B": 5, "4A": 6, "4B": 7};
+    const termOrder: Record<string, number> = {"1A": 0, "1B": 1, "2A": 2, "2B": 3, "3A": 4, "3B": 5, "4A": 6, "4B": 7};
     termSections.sort((a, b) => {
       // If both terms are in the standard order, sort by that
       if (termOrder[a.term] !== undefined && termOrder[b.term] !== undefined) {
@@ -478,7 +478,7 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
       // Group lines by the term sections to make it easier to extract courses
       const termsWithContent = termSections.map(section => {
         // Get all lines for this term section
-        const termLines = lines.slice(section.startLine, section.endLine + 1).join(' ');
+        const termLines = lines.slice(section.startLine, (section.endLine ?? lines.length - 1) + 1).join(' ');
         return {
           term: section.term,
           content: termLines
@@ -494,7 +494,7 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
       });
       
       // Function to extract course codes from text
-      const extractCourseCodes = (text) => {
+      const extractCourseCodes = (text: string) => {
         const coursePattern = /([A-Z]{2,})\s+(\d{3}[A-Z]?)/g;
         const coursesFound = [...text.matchAll(coursePattern)];
         return coursesFound.map(match => `${match[1]} ${match[2]}`);
@@ -663,14 +663,14 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
           
           // Check each existing course
           for (const existingCourse of existingCourses) {
-            const normalizedCode = `${existingCourse.course.courseCode}${existingCourse.course.catalogNumber}`.toUpperCase();
-            
+            const normalizedCode = `${existingCourse.course.code}${existingCourse.course.number}`.toUpperCase();
+
             // If the course is not in the transcript and not already in backlog, move it
-            if (!transcriptCourseCodes.has(normalizedCode) && 
+            if (!transcriptCourseCodes.has(normalizedCode) &&
                 existingCourse.term !== "Unscheduled") {
               coursesToMove.push({
                 courseId: existingCourse.id,
-                courseCode: `${existingCourse.course.courseCode} ${existingCourse.course.catalogNumber}`
+                courseCode: `${existingCourse.course.code} ${existingCourse.course.number}`
               });
             }
           }
@@ -718,12 +718,12 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
       console.log(`Fetched ${availableCourses.length} available courses from database`);
       
       // Log the first few available courses to help debug
-      console.log("Sample available courses:", 
-        availableCourses.slice(0, 5).map(c => `${c.courseCode} ${c.catalogNumber}`));
+      console.log("Sample available courses:",
+        availableCourses.slice(0, 5).map((c: any) => `${c.code} ${c.number}`));
       
       // Check if we have courses for each subject in the transcript
       uniqueSubjects.forEach(subject => {
-        const subjectCourses = availableCourses.filter(c => c.courseCode === subject);
+        const subjectCourses = availableCourses.filter((c: any) => c.code === subject);
         console.log(`Subject ${subject}: ${subjectCourses.length} courses available`);
       });
       
@@ -731,29 +731,33 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
       const normalizeCode = (code: string) => code.replace(/\s+/g, '').toUpperCase();
       
       // If no courses found in database, pre-create common courses from the transcript
-      const needToAddCourses = Array.from(uniqueSubjects).every(subject => 
-        !availableCourses.some(c => c.courseCode === subject)
+      const needToAddCourses = Array.from(uniqueSubjects).every(subject =>
+        !availableCourses.some((c: any) => c.code === subject)
       );
       
+      // Create mapping system — declare early so pre-create block can populate them too
+      const courseMap = new Map<string, any>();
+      const courseCodeMap = new Map<string, any[]>();
+
       if (needToAddCourses) {
         console.log("No courses found in database. Creating essential courses from transcript...");
         
         // First, collect all course codes from transcript
-        const essentialCourses = [];
+        const essentialCourses: { subjectCode: string; number: string; name: string; description?: string; units: number }[] = [];
         
         for (const course of allTranscriptCourses) {
           if (course.code.includes(' ')) {
             const [courseCode, catalogNumber] = course.code.split(' ', 2);
             
             // Check if we already have this course code in our list
-            if (!essentialCourses.some(c => 
-              c.courseCode === courseCode.toUpperCase() && 
-              c.catalogNumber === catalogNumber
+            if (!essentialCourses.some(c =>
+              c.subjectCode === courseCode.toUpperCase() &&
+              c.number === catalogNumber
             )) {
               essentialCourses.push({
-                courseCode: courseCode.toUpperCase(),
-                catalogNumber: catalogNumber,
-                title: course.description || `${courseCode} ${catalogNumber}`,
+                subjectCode: courseCode.toUpperCase(),
+                number: catalogNumber,
+                name: course.description || `${courseCode} ${catalogNumber}`,
                 description: `Auto-created from transcript upload: ${course.description || 'No description available'}`,
                 units: parseFloat(course.earned) || 0.5,
               });
@@ -776,67 +780,63 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
             
             if (createResponse.ok) {
               const newCourse = await createResponse.json();
-              console.log(`Pre-created course: ${newCourse.courseCode} ${newCourse.catalogNumber}`);
-              
+              console.log(`Pre-created course: ${newCourse.code} ${newCourse.number}`);
+
               // Add to available courses list
               availableCourses.push(newCourse);
-              
+
               // Also add to maps
-              const fullCode = `${newCourse.courseCode} ${newCourse.catalogNumber}`;
-              const normalizedKey = normalizeCode(`${newCourse.courseCode}${newCourse.catalogNumber}`);
-              
+              const fullCode = `${newCourse.code} ${newCourse.number}`;
+              const normalizedKey = normalizeCode(`${newCourse.code}${newCourse.number}`);
+
               courseMap.set(normalizedKey, newCourse);
               courseMap.set(fullCode, newCourse);
-              
+
               // Add to subject map
-              if (!courseCodeMap.has(newCourse.courseCode)) {
-                courseCodeMap.set(newCourse.courseCode, []);
+              if (!courseCodeMap.has(newCourse.code)) {
+                courseCodeMap.set(newCourse.code, []);
               }
-              courseCodeMap.get(newCourse.courseCode)?.push(newCourse);
+              courseCodeMap.get(newCourse.code)?.push(newCourse);
             } else {
-              console.error(`Failed to pre-create course: ${essentialCourse.courseCode} ${essentialCourse.catalogNumber}`);
+              console.error(`Failed to pre-create course: ${essentialCourse.subjectCode} ${essentialCourse.number}`);
             }
           } catch (error) {
-            console.error(`Error pre-creating course: ${essentialCourse.courseCode} ${essentialCourse.catalogNumber}`, error);
+            console.error(`Error pre-creating course: ${essentialCourse.subjectCode} ${essentialCourse.number}`, error);
           }
         }
         
         console.log(`Created ${availableCourses.length} courses in database`);
       }
       
-      // Create a comprehensive mapping system for better course matching
-      const courseMap = new Map();
-      const courseCodeMap = new Map<string, any[]>();
-      
       // Build multiple lookup maps for more robust matching
-      availableCourses.forEach(course => {
+      availableCourses.forEach((course: any) => {
         // Store the full official course code as the primary key
-        const fullCode = `${course.courseCode} ${course.catalogNumber}`;
-        
+        const fullCode = `${course.code} ${course.number}`;
+
         // Store multiple formats of the same course code for flexible matching
-        const normalizedKey = normalizeCode(`${course.courseCode}${course.catalogNumber}`);
+        const normalizedKey = normalizeCode(`${course.code}${course.number}`);
         const spaceKey = fullCode.trim();
-        
+
         // Main maps for exact and normalized lookup
         courseMap.set(normalizedKey, course);
         courseMap.set(spaceKey, course);
-        
+
         // Also add to subject code map for finding courses by subject
-        const subjectCode = course.courseCode.toUpperCase();
+        const subjectCode = course.code.toUpperCase();
         if (!courseCodeMap.has(subjectCode)) {
           courseCodeMap.set(subjectCode, []);
         }
         courseCodeMap.get(subjectCode)?.push(course);
-        
+
         // Add alternate formats
         // For example, both "CS135" and "CS 135" should match
         courseMap.set(normalizeCode(fullCode), course);
-        courseMap.set(course.courseCode + course.catalogNumber, course);
+        courseMap.set(course.code + course.number, course);
         courseMap.set(fullCode.toUpperCase(), course);
       });
       
       // Debug: log a few available courses
-      console.log("Sample available courses:", availableCourses.slice(0, 3).map(c => `${c.courseCode} ${c.catalogNumber}`));
+      console.log("Sample available courses:", availableCourses.slice(0, 3).map((c: any) => `${c.code} ${c.number}`));
       
       // Flatten all courses and log them
       const allParsedCourses = Object.values(coursesByTerm).flat();
@@ -854,7 +854,7 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
           let dbCourse = findMatchingCourse(course, courseMap, courseCodeMap, availableCourses);
           
           if (dbCourse) {
-            console.log(`Found match for ${course.code}: ${dbCourse.courseCode} ${dbCourse.catalogNumber}`);
+            console.log(`Found match for ${course.code}: ${dbCourse.code} ${dbCourse.number}`);
             
             try {
               // Add the course to the plan with grade
@@ -872,10 +872,9 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
                 body: JSON.stringify({
                   courseId: dbCourse.id,
                   term: termInfo.term,
-                  termIndex: termInfo.termIndex,
                   status: 'COMPLETED',
-                  grade: course.grade,
-                  numericGrade: getNumericGrade(course.grade)
+                  gradeLabel: course.grade,
+                  gradeNumeric: getNumericGrade(course.grade)
                 }),
               });
               
@@ -927,17 +926,17 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
                       'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                      courseCode: courseCode.toUpperCase(),
-                      catalogNumber: catalogNumber,
-                      title: course.description || `${courseCode} ${catalogNumber}`,
+                      subjectCode: courseCode.toUpperCase(),
+                      number: catalogNumber,
+                      name: course.description || `${courseCode} ${catalogNumber}`,
                       description: `Auto-created from transcript upload: ${course.description || 'No description available'}`,
                       units: parseFloat(course.earned) || 0.5,
                     }),
                   });
-                  
+
                   if (createResponse.ok) {
                     const newCourse = await createResponse.json();
-                    console.log(`Successfully created course: ${newCourse.courseCode} ${newCourse.catalogNumber}`);
+                    console.log(`Successfully created course: ${newCourse.code} ${newCourse.number}`);
                     
                     // Now add the newly created course to the plan
                     // Use term and termIndex appropriate for the custom sequence if we created one
@@ -953,10 +952,9 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
                       body: JSON.stringify({
                         courseId: newCourse.id,
                         term: termInfo.term,
-                        termIndex: termInfo.termIndex,
                         status: 'COMPLETED',
-                        grade: course.grade,
-                        numericGrade: getNumericGrade(course.grade)
+                        gradeLabel: course.grade,
+                        gradeNumeric: getNumericGrade(course.grade)
                       }),
                     });
                     
@@ -1139,9 +1137,9 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
         console.log(`Trying to match ${courseCode} ${catalogNum} by parts`);
         
         // Direct lookup in courses array (most reliable)
-        const directMatch = allCourses.find(c => 
-          c.courseCode.toUpperCase() === courseCode.toUpperCase() && 
-          c.catalogNumber === catalogNum
+        const directMatch = allCourses.find(c =>
+          c.code.toUpperCase() === courseCode.toUpperCase() &&
+          c.number === catalogNum
         );
         
         if (directMatch) {
@@ -1172,39 +1170,39 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
           console.log(`Found ${subjectCourses?.length || 0} courses for subject ${courseCode.toUpperCase()}`);
           
           // Find the closest match by catalog number
-          const match = subjectCourses?.find(c => 
-            c.catalogNumber === catalogNum || 
-            normalizeCode(c.catalogNumber) === normalizeCode(catalogNum)
+          const match = subjectCourses?.find(c =>
+            c.number === catalogNum ||
+            normalizeCode(c.number) === normalizeCode(catalogNum)
           );
-          
+
           if (match) {
-            console.log(`Found subject match for ${course.code}: ${match.courseCode} ${match.catalogNumber}`);
+            console.log(`Found subject match for ${course.code}: ${match.code} ${match.number}`);
             return match;
           }
           
           // Last resort: try fuzzy matching on catalog number if it's a common subject
           const fuzzyMatch = subjectCourses?.find(c => {
             // Strip any non-digit characters for comparison
-            const cleanCatalog = c.catalogNumber.replace(/\D/g, '');
+            const cleanCatalog = c.number.replace(/\D/g, '');
             const cleanInput = catalogNum.replace(/\D/g, '');
             return cleanCatalog === cleanInput;
           });
           
           if (fuzzyMatch) {
-            console.log(`Fuzzy matched ${course.code} to ${fuzzyMatch.courseCode} ${fuzzyMatch.catalogNumber}`);
+            console.log(`Fuzzy matched ${course.code} to ${fuzzyMatch.code} ${fuzzyMatch.number}`);
             return fuzzyMatch;
           }
         }
         
         // Check available courses directly with case insensitive matching
         console.log(`Trying direct case-insensitive search for ${courseCode} ${catalogNum}`);
-        const caseInsensitiveMatch = allCourses.find(c => 
-          c.courseCode.toUpperCase() === courseCode.toUpperCase() && 
-          c.catalogNumber.toUpperCase() === catalogNum.toUpperCase()
+        const caseInsensitiveMatch = allCourses.find(c =>
+          c.code.toUpperCase() === courseCode.toUpperCase() &&
+          c.number.toUpperCase() === catalogNum.toUpperCase()
         );
-        
+
         if (caseInsensitiveMatch) {
-          console.log(`Found case-insensitive match: ${caseInsensitiveMatch.courseCode} ${caseInsensitiveMatch.catalogNumber}`);
+          console.log(`Found case-insensitive match: ${caseInsensitiveMatch.code} ${caseInsensitiveMatch.number}`);
           return caseInsensitiveMatch;
         }
       }
@@ -1244,7 +1242,7 @@ export function PlanTranscriptUpload({ planId, onCoursesAdded }: PlanTranscriptU
     }
     
     // Standard letter grade mapping
-    const gradeMap: Record<string, number> = {
+    const gradeMap: Record<string, number | null> = {
       'A+': 95, 'A': 90, 'A-': 85,
       'B+': 82, 'B': 78, 'B-': 75,
       'C+': 72, 'C': 68, 'C-': 65,

@@ -1,20 +1,20 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { AcademicCalendarYear } from "@/types";
+// string is just a string now
 import { updatePlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Calendar, CheckCircle, Info } from "lucide-react";
 
 interface PlanAcademicCalendarProps {
   planId: string;
-  currentCalendarYear?: AcademicCalendarYear;
+  currentCalendarYear?: string;
   onCalendarUpdated: () => void;
 }
 
 export function PlanAcademicCalendar({ planId, currentCalendarYear, onCalendarUpdated }: PlanAcademicCalendarProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<AcademicCalendarYear | undefined>(currentCalendarYear);
+  const [selectedYear, setSelectedYear] = useState<string | undefined>(currentCalendarYear);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   
@@ -26,16 +26,18 @@ export function PlanAcademicCalendar({ planId, currentCalendarYear, onCalendarUp
   }, [isOpen, currentCalendarYear]);
 
   // Academic calendar year options
-  const calendarYears: AcademicCalendarYear[] = [
+  // Only 2025-2026 has data in the database; others are shown but disabled
+  const AVAILABLE_YEAR = '2025-2026';
+  const calendarYears: string[] = [
+    '2025-2026',
     '2024-2025',
     '2023-2024',
     '2022-2023',
     '2021-2022',
-    '2020-2021'
   ];
 
   // Handle selecting a calendar year
-  const handleYearSelect = (year: AcademicCalendarYear) => {
+  const handleYearSelect = (year: string) => {
     setSelectedYear(year);
   };
 
@@ -94,23 +96,38 @@ export function PlanAcademicCalendar({ planId, currentCalendarYear, onCalendarUp
           </div>
           
           <div className="space-y-2">
-            {calendarYears.map((year) => (
-              <div
-                key={year}
-                className={`p-3 rounded-md border hover:border-primary/50 hover:bg-primary/5 transition-colors cursor-pointer ${selectedYear === year ? 'border-primary bg-primary/10' : ''}`}
-                onClick={() => handleYearSelect(year)}
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center">
-                    <Calendar className="h-4 w-4 mr-2 text-primary" />
-                    <span className="font-medium">{year} Academic Year</span>
+            {calendarYears.map((year) => {
+              const isAvailable = year === AVAILABLE_YEAR;
+              return (
+                <div
+                  key={year}
+                  className={`p-3 rounded-md border transition-colors ${
+                    !isAvailable
+                      ? 'opacity-50 cursor-not-allowed bg-muted/30'
+                      : selectedYear === year
+                        ? 'border-primary bg-primary/10 cursor-pointer'
+                        : 'hover:border-primary/50 hover:bg-primary/5 cursor-pointer'
+                  }`}
+                  onClick={() => isAvailable && handleYearSelect(year)}
+                  title={!isAvailable ? 'Calendar data not yet available for this year' : undefined}
+                >
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center">
+                      <Calendar className={`h-4 w-4 mr-2 ${isAvailable ? 'text-primary' : 'text-muted-foreground'}`} />
+                      <span className={`font-medium ${!isAvailable ? 'text-muted-foreground' : ''}`}>
+                        {year} Academic Year
+                      </span>
+                    </div>
+                    {selectedYear === year && isAvailable && (
+                      <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
+                    )}
+                    {!isAvailable && (
+                      <span className="text-xs text-muted-foreground">Not available</span>
+                    )}
                   </div>
-                  {selectedYear === year && (
-                    <CheckCircle className="h-5 w-5 text-primary flex-shrink-0" />
-                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         

@@ -6,17 +6,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
-import Link from "next/link";
 import { PlanCourseList } from "@/components/plan/plan-course-list";
 import { PlanRequirements } from "@/components/plan/plan-requirements";
 import { PlanAddProgram } from "@/components/plan/plan-add-program";
 import { PlanAcademicCalendar } from "@/components/plan/plan-academic-calendar";
 import { BetaNotification } from "@/components/layout/beta-notification";
-import { CourseWithStatus, Plan, PlanCourse, Requirement, DegreeType } from "@/types";
+import { CourseWithStatus, Plan, PlanCourse, PlanDegree, formatCredentialCategory, formatCourseCode } from "@/types";
 import { useEffect, useState } from "react";
-import { getPlan, removeDegreeFromPlan, updateAllPlanRequirements } from "@/lib/api";
+import { getPlan, updatePlan, removeDegreeFromPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
-import { X, AlertTriangle, Calendar, GraduationCap } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { X, AlertTriangle, Calendar, GraduationCap, Pencil } from "lucide-react";
 
 export default function PlanDetailPage() {
   const params = useParams();
@@ -24,41 +24,51 @@ export default function PlanDetailPage() {
   const planId = params.id as string;
   const [plan, setPlan] = useState<Plan | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("courses");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState("");
   const { toast } = useToast();
   
-  // Load plan data from API
+  // Refresh plan data from API
+  const refreshPlan = async () => {
+    setIsLoading(true);
+    const response = await getPlan(planId);
+    setIsLoading(false);
+
+    if (response.error) {
+      toast({
+        title: "Error",
+        description: `Failed to load plan: ${response.error}`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (response.data) {
+      setPlan(response.data.plan);
+    }
+  };
+
+  // Load plan data on mount
   useEffect(() => {
-    const fetchPlan = async () => {
-      setIsLoading(true);
-      const response = await getPlan(planId);
-      setIsLoading(false);
-      
-      if (response.error) {
-        toast({
-          title: "Error",
-          description: `Failed to load plan: ${response.error}`,
-          variant: "destructive",
-        });
-        return;
-      }
-      
-      if (response.data) {
-        setPlan(response.data.plan);
-      }
-    };
-    
-    fetchPlan();
-  }, [planId, toast]);
+    refreshPlan();
+  }, [planId]);
   
-  // Calculate progress
-  const calculateProgress = () => {
-    if (!plan || !plan.courses || plan.courses.length === 0) return 0;
-    
-    const completedCourses = plan.courses.filter(
-      course => course.status === 'COMPLETED'
-    ).length;
-    
-    return Math.round((completedCourses / plan.courses.length) * 100);
+  // Calculate progress for a specific degree from its requirement cache
+  const calculateDegreeProgress = (degree: PlanDegree) => {
+    if (!degree.requirementCache || degree.requirementCache.length === 0) return 0;
+
+    // Find section root requirements (parentId is null = top of each section tree)
+    // Exclude leaf TEXT_RULE nodes (informational only, not actionable)
+    const sectionRoots = degree.requirementCache.filter(
+      c => c.requirement && c.requirement.parentId == null
+        && !(c.requirement.logicType === 'TEXT_RULE')
+    );
+
+    if (sectionRoots.length === 0) return 0;
+
+    const avgProgress = sectionRoots.reduce((sum, c) => sum + c.progress, 0) / sectionRoots.length;
+    return Math.round(avgProgress * 100);
   };
   
   // Calculate units completed
@@ -80,32 +90,20 @@ export default function PlanDetailPage() {
     });
   };
   
-  // Get degree type display text
-  const getDegreeTypeDisplay = (type: DegreeType) => {
-    switch (type) {
-      case 'MAJOR': return 'Major';
-      case 'MINOR': return 'Minor';
-      case 'SPECIALIZATION': return 'Specialization';
-      case 'OPTION': return 'Option';
-      case 'JOINT': return 'Joint';
-      default: return type;
-    }
-  };
-  
   // Calculate average grade
   const calculateAverageGrade = () => {
     if (!plan || !plan.courses) return 0;
     
-    const coursesWithGrades = plan.courses.filter(pc => 
-      pc.status === 'COMPLETED' && pc.grade && !isNaN(parseFloat(pc.grade))
+    const coursesWithGrades = plan.courses.filter(pc =>
+      pc.status === 'COMPLETED' && pc.gradeNumeric != null
     );
-    
+
     if (coursesWithGrades.length === 0) return 0;
-    
-    const sum = coursesWithGrades.reduce((total, pc) => 
-      total + parseFloat(pc.grade || "0"), 0
+
+    const sum = coursesWithGrades.reduce((total, pc) =>
+      total + (pc.gradeNumeric || 0), 0
     );
-    
+
     return (sum / coursesWithGrades.length).toFixed(1);
   };
 
@@ -114,42 +112,20 @@ export default function PlanDetailPage() {
     if (!plan || !plan.courses) return [];
     
     return plan.courses.map(pc => ({
-      id: pc.course.id,
-      courseCode: pc.course.courseCode,
-      catalogNumber: pc.course.catalogNumber,
-      title: pc.course.title,
-      description: pc.course.description,
-      units: pc.course.units,
-      prerequisites: pc.course.prerequisites,
-      corequisites: pc.course.corequisites,
-      antirequisites: pc.course.antirequisites,
+      id: pc.id,
+      courseId: pc.courseId,
+      code: pc.course?.code || '',
+      number: pc.course?.number || '',
+      name: pc.course?.name || '',
+      description: pc.course?.description,
+      units: pc.course?.units || 0,
       status: pc.status,
       term: pc.term || '',
-      grade: pc.grade
+      gradeLabel: pc.gradeLabel,
+      gradeNumeric: pc.gradeNumeric,
+      displayOrder: pc.displayOrder,
     }));
   };
-  
-  // Auto-refresh requirements when page loads
-  useEffect(() => {
-    const refreshRequirements = async () => {
-      if (plan && plan.academicCalendarYear && plan.degrees && plan.degrees.length > 0) {
-        try {
-          // Update all requirements for the plan
-          await updateAllPlanRequirements(planId);
-          
-          // Refresh plan data to get updated requirements
-          const response = await getPlan(planId);
-          if (response.data) {
-            setPlan(response.data.plan);
-          }
-        } catch (error) {
-          console.error("Failed to refresh requirements:", error);
-        }
-      }
-    };
-    
-    refreshRequirements();
-  }, [planId, plan?.courses?.length]);
   
   return (
     <div className="flex flex-col min-h-screen">
@@ -213,13 +189,49 @@ export default function PlanDetailPage() {
           <>
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h1 className="text-3xl font-bold">{plan.name}</h1>
-                <p className="text-muted-foreground">Created on {formatDate(plan.created)}</p>
-                {plan.degrees && plan.degrees.length > 0 && (
+                {isEditingName ? (
+                  <form
+                    className="flex items-center gap-2"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      const trimmed = editName.trim();
+                      if (!trimmed || trimmed === plan.name) {
+                        setIsEditingName(false);
+                        return;
+                      }
+                      const response = await updatePlan(planId, { name: trimmed });
+                      if (response.data?.plan) {
+                        setPlan(response.data.plan);
+                      }
+                      setIsEditingName(false);
+                    }}
+                  >
+                    <Input
+                      autoFocus
+                      className="text-3xl font-bold h-auto py-0 px-1 w-80"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onBlur={() => setIsEditingName(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setIsEditingName(false);
+                      }}
+                    />
+                  </form>
+                ) : (
+                  <h1
+                    className="text-3xl font-bold cursor-pointer group flex items-center gap-2"
+                    onClick={() => { setEditName(plan.name); setIsEditingName(true); }}
+                  >
+                    {plan.name}
+                    <Pencil className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </h1>
+                )}
+                <p className="text-muted-foreground">Created on {formatDate(plan.createdAt)}</p>
+                {plan.degrees && plan.degrees.filter(d => d.degree?.credentialCategory !== 'DEGREE_REQUIREMENTS').length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {plan.degrees.map(deg => (
+                    {plan.degrees.filter(d => d.degree?.credentialCategory !== 'DEGREE_REQUIREMENTS').map(deg => (
                       <span key={deg.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted">
-                        {deg.type}: {deg.degree.name}
+                        {formatCredentialCategory(deg.degree?.credentialCategory || 'GENERAL')}: {deg.degree?.name}
                       </span>
                     ))}
                   </div>
@@ -229,21 +241,18 @@ export default function PlanDetailPage() {
                 <Button variant="outline" onClick={() => router.push("/plans")}>
                   Back to Plans
                 </Button>
-                <Button>
-                  Edit Plan
-                </Button>
               </div>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2">
-                <Tabs defaultValue="courses">
+                <Tabs value={activeTab} onValueChange={setActiveTab}>
                   <TabsList className="mb-4">
                     <TabsTrigger value="courses">Courses</TabsTrigger>
                     <TabsTrigger value="requirements">Requirements</TabsTrigger>
                   </TabsList>
                   
-                  <TabsContent value="courses">
+                  <TabsContent value="courses" forceMount className="data-[state=inactive]:hidden">
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between">
                         <CardTitle>My Academic Schedule</CardTitle>
@@ -253,7 +262,7 @@ export default function PlanDetailPage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
-                  
+
                   <TabsContent value="requirements">
                     <Card>
                       <CardHeader>
@@ -271,14 +280,14 @@ export default function PlanDetailPage() {
                               {!plan.academicCalendarYear && (
                                 <Button variant="outline" className="inline-flex items-center" onClick={(e) => {
                                   e.preventDefault(); // Prevent any default navigation
-                                  document.querySelector('button[aria-label="Select Academic Calendar"]')?.click();
+                                  (document.querySelector('button[aria-label="Select Academic Calendar"]') as HTMLElement)?.click();
                                 }}>
                                   <Calendar className="mr-2 h-4 w-4" />
                                   Select Academic Calendar
                                 </Button>
                               )}
                               {(!plan.degrees || plan.degrees.length === 0) && (
-                                <Button variant="outline" className="inline-flex items-center" onClick={() => document.querySelector('button[aria-label="Add Program"]')?.click()}>
+                                <Button variant="outline" className="inline-flex items-center" onClick={() => (document.querySelector('button[aria-label="Add Program"]') as HTMLElement)?.click()}>
                                   <GraduationCap className="mr-2 h-4 w-4" />
                                   Add a Program
                                 </Button>
@@ -287,36 +296,27 @@ export default function PlanDetailPage() {
                           </div>
                         ) : (
                           <>
-                            {plan.degrees.map(degree => (
+                            {/* Faculty-level degree requirements (e.g., BMath Requirements) */}
+                            {plan.degrees.filter(d => d.degree?.credentialCategory === 'DEGREE_REQUIREMENTS').map(degree => (
                               <div key={degree.id} className="mb-8">
-                                <h3 className="text-lg font-medium mb-4">{degree.degree.name} ({getDegreeTypeDisplay(degree.type)})</h3>
-                                <PlanRequirements 
-                                  planId={planId} 
-                                  planDegreeId={degree.id} 
-                                  requirements={degree.requirements || []}
-                                  onRequirementsUpdated={() => {
-                                    // Refresh plan data
-                                    const fetchPlan = async () => {
-                                      setIsLoading(true);
-                                      const response = await getPlan(planId);
-                                      setIsLoading(false);
-                                      
-                                      if (response.error) {
-                                        toast({
-                                          title: "Error",
-                                          description: `Failed to load plan: ${response.error}`,
-                                          variant: "destructive",
-                                        });
-                                        return;
-                                      }
-                                      
-                                      if (response.data) {
-                                        setPlan(response.data.plan);
-                                      }
-                                    };
-                                    
-                                    fetchPlan();
-                                  }}
+                                <h3 className="text-lg font-medium mb-4">
+                                  {degree.degree?.name?.replace(' Degree Requirements', '') || 'Faculty'} Requirements
+                                </h3>
+                                <PlanRequirements
+                                  planId={planId}
+                                  planDegreeId={degree.id}
+                                  onRequirementsUpdated={refreshPlan}
+                                />
+                              </div>
+                            ))}
+                            {/* Program-specific degree requirements */}
+                            {plan.degrees.filter(d => d.degree?.credentialCategory !== 'DEGREE_REQUIREMENTS').map(degree => (
+                              <div key={degree.id} className="mb-8">
+                                <h3 className="text-lg font-medium mb-4">{degree.degree?.name} ({formatCredentialCategory(degree.degree?.credentialCategory || 'GENERAL')})</h3>
+                                <PlanRequirements
+                                  planId={planId}
+                                  planDegreeId={degree.id}
+                                  onRequirementsUpdated={refreshPlan}
                                 />
                               </div>
                             ))}
@@ -337,20 +337,29 @@ export default function PlanDetailPage() {
                     <div className="space-y-4">
                       {plan.degrees && plan.degrees.length > 0 ? (
                         <div className="space-y-2">
-                          {plan.degrees.map((degree) => (
-                            <div key={degree.id}>
-                              <div className="flex justify-between mb-1 text-sm">
-                                <span>{degree.degree.program?.name || degree.degree.name} ({getDegreeTypeDisplay(degree.type)})</span>
-                                <span>{calculateProgress()}%</span>
+                          {plan.degrees.map((degree) => {
+                            const progress = calculateDegreeProgress(degree);
+                            const barColor = progress >= 100 ? 'bg-green-500' :
+                              progress > 0 ? 'bg-blue-500' : 'bg-muted';
+                            const isFacultyReq = degree.degree?.credentialCategory === 'DEGREE_REQUIREMENTS';
+                            const label = isFacultyReq
+                              ? `${degree.degree?.name?.replace(' Degree Requirements', '') || 'Faculty'} Requirements`
+                              : `${degree.degree?.program?.name || degree.degree?.name} (${formatCredentialCategory(degree.degree?.credentialCategory || 'GENERAL')})`;
+                            return (
+                              <div key={degree.id}>
+                                <div className="flex justify-between mb-1 text-sm">
+                                  <span>{label}</span>
+                                  <span>{progress}%</span>
+                                </div>
+                                <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
+                                  <div
+                                    className={`h-full rounded-full ${barColor}`}
+                                    style={{ width: `${progress}%` }}
+                                  ></div>
+                                </div>
                               </div>
-                              <div className="w-full h-2 bg-muted overflow-hidden rounded-full">
-                                <div 
-                                  className="h-full bg-primary rounded-full"
-                                  style={{ width: `${calculateProgress()}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       ) : (
                         <div className="py-2 px-3 bg-muted rounded-md text-sm">
@@ -368,30 +377,8 @@ export default function PlanDetailPage() {
                         <h3 className="text-sm font-medium mb-3">Academic Calendar</h3>
                         <PlanAcademicCalendar 
                           planId={planId} 
-                          currentCalendarYear={plan.academicCalendarYear}
-                          onCalendarUpdated={() => {
-                            // Refresh plan data
-                            const fetchPlan = async () => {
-                              setIsLoading(true);
-                              const response = await getPlan(planId);
-                              setIsLoading(false);
-                              
-                              if (response.error) {
-                                toast({
-                                  title: "Error",
-                                  description: `Failed to load plan: ${response.error}`,
-                                  variant: "destructive",
-                                });
-                                return;
-                              }
-                              
-                              if (response.data) {
-                                setPlan(response.data.plan);
-                              }
-                            };
-                            
-                            fetchPlan();
-                          }}
+                          currentCalendarYear={plan.academicCalendarYear ?? undefined}
+                          onCalendarUpdated={refreshPlan}
                         />
                         <div className="mt-2 text-xs text-muted-foreground">
                           Select which academic calendar year your program(s) should follow. This determines which degree requirements apply to your plan.
@@ -400,9 +387,9 @@ export default function PlanDetailPage() {
 
                       <div className="border-t pt-4 mt-4">
                         <h3 className="text-sm font-medium mb-3">Programs</h3>
-                        {plan.degrees && plan.degrees.length > 0 ? (
+                        {plan.degrees && plan.degrees.filter(d => d.degree?.credentialCategory !== 'DEGREE_REQUIREMENTS').length > 0 ? (
                           <div className="space-y-3">
-                            {plan.degrees.map((degree, index) => (
+                            {plan.degrees.filter(d => d.degree?.credentialCategory !== 'DEGREE_REQUIREMENTS').map((degree, index) => (
                               <div 
                                 key={degree.id} 
                                 className={`p-3 border rounded-md ${degree.isRemoving ? 'program-removing' : 'animate-fadeIn'}`}
@@ -411,14 +398,14 @@ export default function PlanDetailPage() {
                                 <div className="flex justify-between items-start mb-2">
                                   <div>
                                     <div className="font-medium">
-                                      {degree.degree.program?.name || degree.degree.name}
+                                      {degree.degree?.program?.name || degree.degree?.name}
                                     </div>
                                     <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                      <span className="capitalize">{degree.type.toLowerCase()}</span>
-                                      {degree.degree.program?.faculty && (
+                                      <span>{formatCredentialCategory(degree.degree?.credentialCategory || 'GENERAL')}</span>
+                                      {degree.degree?.program?.faculties && degree.degree.program.faculties.length > 0 && (
                                         <>
                                           <span className="text-gray-400">•</span>
-                                          <span>{degree.degree.program.faculty.name}</span>
+                                          <span>{degree.degree.program.faculties.map((f: any) => f.name).join(', ')}</span>
                                         </>
                                       )}
                                     </div>
@@ -427,7 +414,7 @@ export default function PlanDetailPage() {
                                     className="text-gray-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-red-50"
                                     onClick={async () => {
                                       // Ask for confirmation
-                                      if (!confirm(`Are you sure you want to remove ${degree.degree.program?.name || degree.degree.name} from your plan?`)) {
+                                      if (!confirm(`Are you sure you want to remove ${degree.degree?.program?.name || degree.degree?.name} from your plan?`)) {
                                         return;
                                       }
                                       
@@ -437,9 +424,9 @@ export default function PlanDetailPage() {
                                           if (!prev) return null;
                                           return {
                                             ...prev,
-                                            degrees: prev.degrees.map(d => 
-                                              d.id === degree.id 
-                                                ? { ...d, isRemoving: true } 
+                                            degrees: (prev.degrees || []).map(d =>
+                                              d.id === degree.id
+                                                ? { ...d, isRemoving: true }
                                                 : d
                                             )
                                           };
@@ -452,7 +439,7 @@ export default function PlanDetailPage() {
                                             if (!prev) return null;
                                             return {
                                               ...prev,
-                                              degrees: prev.degrees.filter(d => d.id !== degree.id)
+                                              degrees: (prev.degrees || []).filter(d => d.id !== degree.id)
                                             };
                                           });
                                           
@@ -463,7 +450,7 @@ export default function PlanDetailPage() {
                                             // If API call fails, add the program back
                                             setPlan(prev => {
                                               if (!prev) return null;
-                                              const updatedDegrees = [...prev.degrees];
+                                              const updatedDegrees = [...(prev.degrees || [])];
                                               if (!updatedDegrees.some(d => d.id === degree.id)) {
                                                 updatedDegrees.push(degree);
                                               }
@@ -478,7 +465,7 @@ export default function PlanDetailPage() {
                                           
                                           toast({
                                             title: "Program removed",
-                                            description: `Removed ${degree.degree.program?.name || degree.degree.name} from your plan`
+                                            description: `Removed ${degree.degree?.program?.name || degree.degree?.name} from your plan`
                                           });
                                         }, 300);
                                       } catch (error) {
@@ -505,31 +492,9 @@ export default function PlanDetailPage() {
                             </p>
                           </div>
                         )}
-                        <PlanAddProgram 
-                          planId={planId} 
-                          onProgramAdded={() => {
-                            // Refresh plan data
-                            const fetchPlan = async () => {
-                              setIsLoading(true);
-                              const response = await getPlan(planId);
-                              setIsLoading(false);
-                              
-                              if (response.error) {
-                                toast({
-                                  title: "Error",
-                                  description: `Failed to load plan: ${response.error}`,
-                                  variant: "destructive",
-                                });
-                                return;
-                              }
-                              
-                              if (response.data) {
-                                setPlan(response.data.plan);
-                              }
-                            };
-                            
-                            fetchPlan();
-                          }} 
+                        <PlanAddProgram
+                          planId={planId}
+                          onProgramAdded={refreshPlan}
                         />
                       </div>
                       

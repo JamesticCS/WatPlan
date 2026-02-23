@@ -3,12 +3,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
-    // Get basic counts
     const userCount = await prisma.user.count();
     const planCount = await prisma.plan.count();
     const courseCount = await prisma.course.count();
-    
-    // Get limited user data (excluding sensitive fields)
+
     const users = await prisma.user.findMany({
       select: {
         id: true,
@@ -21,15 +19,14 @@ export async function GET() {
           select: {
             id: true,
             name: true,
-            created: true,
-            updated: true,
+            createdAt: true,
+            updatedAt: true,
           }
         }
       },
-      take: 100 // Limit to 100 users
+      take: 100
     });
-    
-    // Get most recently created plans
+
     const plans = await prisma.plan.findMany({
       include: {
         user: {
@@ -43,23 +40,22 @@ export async function GET() {
           include: {
             course: true
           },
-          take: 20 // Limit courses per plan
+          take: 20
         }
       },
       orderBy: {
-        created: 'desc'
+        createdAt: 'desc'
       },
-      take: 20 // Limit to 20 recent plans
+      take: 20
     });
-    
-    // Sample of courses
+
     const courses = await prisma.course.findMany({
-      take: 50, // Limit to 50 courses
+      take: 50,
       orderBy: {
-        courseCode: 'asc'
+        code: 'asc'
       }
     });
-    
+
     return NextResponse.json({
       status: "success",
       counts: {

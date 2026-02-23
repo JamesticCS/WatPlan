@@ -94,7 +94,7 @@ export default function PlansPage() {
     
     // Add the new plan to the top of the list
     if (response.data && response.data.plan) {
-      setPlans(prev => [response.data.plan, ...prev]);
+      setPlans(prev => [response.data!.plan, ...prev]);
       
       // Scroll to top of the page smoothly after adding the plan
       window.scrollTo({
@@ -221,7 +221,7 @@ export default function PlansPage() {
                           </span>
                         </CardTitle>
                         <CardDescription>
-                          Created on {formatDate(plan.created)}
+                          Created on {formatDate(plan.createdAt)}
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -229,7 +229,7 @@ export default function PlansPage() {
                           <div className="flex flex-wrap gap-2 mb-4">
                             {plan.degrees.map((planDegree) => (
                               <span key={planDegree.id} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted">
-                                {planDegree.type}: {planDegree.degree.program?.name}
+                                {planDegree.degree?.name}
                               </span>
                             ))}
                           </div>

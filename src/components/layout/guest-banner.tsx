@@ -24,6 +24,7 @@ export function GuestBanner() {
 
   const handleConvertAccount = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!session?.user) return;
     setIsLoading(true);
 
     try {
@@ -31,10 +32,10 @@ export function GuestBanner() {
       const response = await fetch("/api/auth/convert-guest", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           guestId: session.user.id,
-          email, 
-          password 
+          email,
+          password
         }),
       });
 
