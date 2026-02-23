@@ -20,8 +20,8 @@ export function Navbar() {
         </div>
         <div className="flex flex-1 items-center justify-between space-x-6 md:justify-end">
           <nav className="flex items-center space-x-4">
-            {/* About dialog is always visible */}
-            <AboutDialog />
+            {/* Toggle: change to true to show the About dialog */}
+            {false && <AboutDialog />}
             
             {/* My Plans link only when signed in */}
             {session && (
