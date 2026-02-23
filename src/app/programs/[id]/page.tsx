@@ -11,10 +11,12 @@ import {
   Program,
   Degree,
   RequirementSection,
+  Requirement,
   formatCredentialCategory,
+  formatCourseCode,
 } from "@/types";
-import { RequirementTreeDisplay } from "@/components/ui/requirement-tree-display";
 import { ArrowLeft, GraduationCap, BookOpen, ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 export default function ProgramDetailPage() {
   const params = useParams();
@@ -194,7 +196,7 @@ function DegreeCard({ degree }: { degree: Degree }) {
                   {expandedSections.has(section.id) && section.requirementRoot && (
                     <div className="px-4 pb-3 border-t">
                       <div className="pt-3">
-                        <RequirementTreeDisplay node={section.requirementRoot} linkCourses />
+                        <RequirementTreeDisplay node={section.requirementRoot} />
                       </div>
                     </div>
                   )}
@@ -212,5 +214,65 @@ function DegreeCard({ degree }: { degree: Degree }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function RequirementTreeDisplay({ node, depth = 0 }: { node: Requirement; depth?: number }) {
+  const hasChildren = node.children && node.children.length > 0;
+
+  return (
+    <div className={depth > 0 ? "ml-4 border-l pl-3" : ""}>
+      <div className="py-0.5">
+        {node.logicType === "ALL" && hasChildren && (
+          <p className="text-sm font-medium text-muted-foreground">
+            {node.label || "All of the following:"}
+          </p>
+        )}
+        {node.logicType === "N_OF" && hasChildren && (
+          <p className="text-sm font-medium text-muted-foreground">
+            {node.label && !/^\d+$/.test(node.label.trim())
+              ? node.label
+              : `Complete ${node.n || "?"} of the following`}
+          </p>
+        )}
+        {node.logicType === "COURSE" && (
+          <span className="text-sm">
+            <Link href={`/courses/${encodeURIComponent(node.courseCode || "")}`}>
+              <code className="px-1.5 py-0.5 bg-muted rounded text-xs font-mono hover:underline cursor-pointer">
+                {node.courseCode ? formatCourseCode(node.courseCode) : "Unknown"}
+              </code>
+            </Link>
+            {node.course && (
+              <span className="text-muted-foreground ml-1.5">{node.course.name}</span>
+            )}
+            {node.minGradeRequired != null && (
+              <span className="text-xs text-orange-600 dark:text-orange-400 ml-1">
+                (min {node.minGradeRequired}%)
+              </span>
+            )}
+          </span>
+        )}
+        {node.logicType === "UNITS" && (
+          <p className="text-sm">
+            {node.unitsRequired} units
+            {node.subjectRestriction && ` in ${node.subjectRestriction}`}
+            {node.levelRestriction && ` at ${node.levelRestriction}-level`}
+          </p>
+        )}
+        {node.logicType === "TEXT_RULE" && (
+          <p className="text-sm text-muted-foreground italic">
+            {node.text || node.label || "See academic calendar"}
+          </p>
+        )}
+
+        {hasChildren && (
+          <div className="mt-1">
+            {node.children!.map((child) => (
+              <RequirementTreeDisplay key={child.id} node={child} depth={depth + 1} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

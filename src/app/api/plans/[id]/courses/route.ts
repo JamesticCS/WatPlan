@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth-utils';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 
 // POST /api/plans/[id]/courses - Add a course to a plan
@@ -10,14 +11,30 @@ export async function POST(
 ) {
   const { id } = await context.params;
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const plan = await prisma.plan.findUnique({
       where: {
         id,
-        userId,
+        userId: user.id,
       },
     });
 
@@ -101,14 +118,30 @@ export async function GET(
 ) {
   const { id } = await context.params;
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const plan = await prisma.plan.findUnique({
       where: {
         id,
-        userId,
+        userId: user.id,
       },
     });
 

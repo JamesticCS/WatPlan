@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth-utils';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { ensureFacultyRequirements } from '@/lib/faculty-requirements';
 
 // GET /api/plans/[id] - Get a specific plan by ID
@@ -11,14 +12,30 @@ export async function GET(
   const { id } = await context.params;
 
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const plan = await prisma.plan.findUnique({
       where: {
         id,
-        userId,
+        userId: user.id,
       },
       include: {
         degrees: {
@@ -73,7 +90,7 @@ export async function GET(
 
     // Re-fetch only if faculty requirements were added/removed
     const freshPlan = await prisma.plan.findUnique({
-      where: { id, userId },
+      where: { id, userId: user.id },
       include: {
         degrees: {
           include: {
@@ -124,9 +141,25 @@ export async function PUT(
   const { id } = await context.params;
 
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const body = await request.json();
 
@@ -141,7 +174,7 @@ export async function PUT(
       );
     }
 
-    if (existingPlan.userId !== userId) {
+    if (existingPlan.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 403 }
@@ -177,9 +210,25 @@ export async function PATCH(
   const { id } = await context.params;
 
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const body = await request.json();
 
@@ -194,7 +243,7 @@ export async function PATCH(
       );
     }
 
-    if (existingPlan.userId !== userId) {
+    if (existingPlan.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 403 }
@@ -230,9 +279,25 @@ export async function DELETE(
   const { id } = await context.params;
 
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const existingPlan = await prisma.plan.findUnique({
       where: { id },
@@ -245,7 +310,7 @@ export async function DELETE(
       );
     }
 
-    if (existingPlan.userId !== userId) {
+    if (existingPlan.userId !== user.id) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 403 }
@@ -290,14 +355,30 @@ export async function POST(
   const { id } = await context.params;
 
   try {
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const sourcePlan = await prisma.plan.findUnique({
       where: {
         id,
-        userId,
+        userId: user.id,
       },
       include: {
         degrees: {
@@ -339,7 +420,7 @@ export async function POST(
     if (requestedName) {
       const existingPlan = await prisma.plan.findFirst({
         where: {
-          userId,
+          userId: user.id,
           name: requestedName,
         },
       });
@@ -356,7 +437,7 @@ export async function POST(
     const newPlan = await prisma.plan.create({
       data: {
         name: requestedName,
-        userId,
+        userId: user.id,
         academicCalendarYear: sourcePlan.academicCalendarYear,
         coopSequence: sourcePlan.coopSequence,
         customTerms: sourcePlan.customTerms ?? undefined,

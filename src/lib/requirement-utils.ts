@@ -40,7 +40,7 @@ export interface EvalResult {
 
 // ─── Tree Loading ──────────────────────────────────────────────────────────
 
-export const toNode = (r: any): RequirementNode => ({
+const toNode = (r: any): RequirementNode => ({
   id: r.id,
   parentId: r.parentId ?? r.parentid ?? null,
   logicType: r.logicType ?? r.logictype,
@@ -173,7 +173,7 @@ function evaluateNOf(
   planCourses: PlanCourseForEval[],
   manualOverrides: Map<string, EvalResult>
 ): EvalResult {
-  const n = Math.min(node.n || 1, node.children.length);
+  const n = node.n || 1;
   const children = node.children;
 
   if (children.length === 0) {
@@ -189,7 +189,7 @@ function evaluateNOf(
   // Take the top N child progress values to reflect partial completion
   const sortedProgress = childResults.map(r => r.progress).sort((a, b) => b - a);
   const topN = sortedProgress.slice(0, n);
-  const progress = n > 0 ? topN.reduce((sum, p) => sum + p, 0) / n : 0;
+  const progress = topN.reduce((sum, p) => sum + p, 0) / n;
   return { status: deriveParentStatus(progress, childResults), progress };
 }
 

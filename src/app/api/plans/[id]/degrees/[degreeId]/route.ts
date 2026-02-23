@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getAuthUser } from '@/lib/auth-utils';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { ensureFacultyRequirements } from '@/lib/faculty-requirements';
 
 // DELETE /api/plans/[id]/degrees/[degreeId] - Remove a degree from a plan
@@ -10,14 +11,30 @@ export async function DELETE(
 ) {
   try {
     const { id, degreeId } = await params;
-    const auth = await getAuthUser();
-    if (auth.error) return auth.error;
-    const userId = auth.user.id;
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+    });
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      );
+    }
 
     const plan = await prisma.plan.findUnique({
       where: {
         id,
-        userId,
+        userId: user.id,
       },
     });
 

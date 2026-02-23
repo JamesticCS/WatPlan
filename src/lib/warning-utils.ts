@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { RequirementNode, PlanCourseForEval, EvalResult, evaluateNode, toNode } from './requirement-utils';
+import { RequirementNode, PlanCourseForEval, EvalResult, evaluateNode } from './requirement-utils';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -19,6 +19,27 @@ export interface CourseWarning {
 }
 
 // ─── Batch Tree Loading ─────────────────────────────────────────────────────
+
+const toNode = (r: any): RequirementNode => ({
+  id: r.id,
+  parentId: r.parentId ?? r.parentid ?? null,
+  logicType: r.logicType ?? r.logictype,
+  label: r.label,
+  n: r.n,
+  courseId: r.courseId ?? r.courseid ?? null,
+  courseCode: r.courseCode ?? r.coursecode ?? null,
+  minGradeRequired: r.minGradeRequired ?? r.mingraderequired ?? null,
+  unitsRequired: r.unitsRequired != null ? Number(r.unitsRequired) : (r.unitsrequired != null ? Number(r.unitsrequired) : null),
+  subjectRestriction: r.subjectRestriction ?? r.subjectrestriction ?? null,
+  levelRestriction: r.levelRestriction ?? r.levelrestriction ?? null,
+  minAverage: r.minAverage ?? r.minaverage ?? null,
+  maxFailures: r.maxFailures ?? r.maxfailures ?? null,
+  failureRestriction: r.failureRestriction ?? r.failurerestriction ?? null,
+  concentrationType: r.concentrationType ?? r.concentrationtype ?? null,
+  text: r.text,
+  displayOrder: r.displayOrder ?? r.displayorder ?? 0,
+  children: [],
+});
 
 /**
  * Load all prerequisite and corequisite trees for a set of courses in one query.
@@ -223,12 +244,7 @@ export async function computeWarningsForPlan(
   // Load all plan courses with course data
   const planCourses = await prisma.planCourse.findMany({
     where: { planId },
-    select: {
-      courseId: true,
-      term: true,
-      status: true,
-      gradeNumeric: true,
-      dismissedWarnings: true,
+    include: {
       course: {
         select: {
           id: true,

@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
     const callbackUrl = req.nextUrl.searchParams.get("callbackUrl") || "/plans";
     googleOAuthUrl.searchParams.set("state", encodeURIComponent(callbackUrl));
     
+    // Log the flow for debugging
+    console.log("[DIRECT GOOGLE AUTH] Redirecting to Google:", googleOAuthUrl.toString());
+    
     // Redirect to Google's OAuth page
     return NextResponse.redirect(googleOAuthUrl);
   } catch (error) {
