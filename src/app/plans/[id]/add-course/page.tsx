@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
-import { getCourses, addCourseToPlan } from "@/lib/api";
+import { getCourses, addCoursesToPlan } from "@/lib/api";
 import { Course, formatCourseCode } from "@/types";
 import { CheckCircle2Icon, XIcon, ThumbsUpIcon, GaugeIcon, StarIcon } from "lucide-react";
 
@@ -84,65 +84,43 @@ export default function AddCoursePage() {
     try {
       setIsAdding(true);
 
-      // Add all selected courses in parallel
-      const settled = await Promise.allSettled(
-        selectedCourses.map(course =>
-          addCourseToPlan(planId, {
-            courseId: course.id,
-            term: term || undefined,
-            status: "PLANNED"
-          }).then(response => ({ course, response }))
-        )
+      // Add all courses in a single batch request
+      const response = await addCoursesToPlan(
+        planId,
+        selectedCourses.map(course => ({
+          courseId: course.id,
+          term: term || undefined,
+          status: "PLANNED",
+        }))
       );
 
-      const results: Course[] = [];
-      const failures: { course: Course; error: string }[] = [];
-
-      for (const result of settled) {
-        if (result.status === 'fulfilled') {
-          if (result.value.response.error) {
-            failures.push({ course: result.value.course, error: result.value.response.error });
-          } else {
-            results.push(result.value.course);
-          }
-        } else {
-          // This shouldn't happen since fetchApi doesn't throw, but handle it
-          failures.push({ course: selectedCourses[0], error: 'Network error' });
-        }
+      if (response.error) {
+        toast({
+          title: "Error",
+          description: response.error,
+          variant: "destructive",
+        });
+        return;
       }
 
-      // Show appropriate toast based on results
-      if (results.length > 0) {
+      const { added = 0, alreadyInPlan = 0 } = response.data || {};
+
+      if (added > 0) {
         toast({
           title: "Success",
-          description: `Added ${results.length} course${results.length > 1 ? 's' : ''} to your plan`,
+          description: `Added ${added} course${added > 1 ? 's' : ''} to your plan`,
         });
       }
 
-      // Show errors for failed courses
-      if (failures.length > 0) {
-        const duplicateErrors = failures.filter(f => f.error.includes("already in plan"));
-        const otherErrors = failures.filter(f => !f.error.includes("already in plan"));
-
-        if (duplicateErrors.length > 0) {
-          toast({
-            title: "Some Courses Already in Plan",
-            description: `${duplicateErrors.length} course${duplicateErrors.length > 1 ? 's were' : ' was'} already in your plan.`,
-            variant: "destructive",
-          });
-        }
-
-        if (otherErrors.length > 0) {
-          toast({
-            title: "Error Adding Some Courses",
-            description: `Failed to add ${otherErrors.length} course${otherErrors.length > 1 ? 's' : ''}. Please try again.`,
-            variant: "destructive",
-          });
-        }
+      if (alreadyInPlan > 0) {
+        toast({
+          title: "Some Courses Already in Plan",
+          description: `${alreadyInPlan} course${alreadyInPlan > 1 ? 's were' : ' was'} already in your plan.`,
+          variant: "destructive",
+        });
       }
 
-      // Navigate back — requirement updates already fire in the background on the server
-      if (results.length > 0) {
+      if (added > 0) {
         router.push(`/plans/${planId}`);
       }
     } catch (error) {

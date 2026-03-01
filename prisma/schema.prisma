@@ -248,6 +248,8 @@ model RequirementSection {
   updatedAt         DateTime     @updatedAt
   degree            Degree       @relation(fields: [degreeId], references: [id], onDelete: Cascade)
   requirementRoot   Requirement? @relation("SectionRequirement", fields: [requirementRootId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([degreeId])
 }
 
 // ─── User Plans ─────────────────────────────────────────────────────────────

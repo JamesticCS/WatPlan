@@ -140,6 +140,21 @@ export async function addCourseToPlan(
   });
 }
 
+export async function addCoursesToPlan(
+  planId: string,
+  courses: Array<{
+    courseId: string;
+    term?: string;
+    status?: string;
+  }>
+): Promise<ApiResponse<{ added: number; alreadyInPlan: number }>> {
+  return fetchApi(`/api/plans/${planId}/courses`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ courses }),
+  });
+}
+
 export async function updatePlanCourse(
   planId: string,
   courseId: string,

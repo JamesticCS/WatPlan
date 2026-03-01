@@ -43,28 +43,32 @@ export async function GET(
             degree: {
               include: {
                 program: {
-                  include: {
-                    faculties: true,
-                  }
-                }
-              }
+                  include: { faculties: true },
+                },
+              },
             },
             requirementCache: {
-              include: {
-                requirement: true,
-              }
-            }
-          }
+              select: {
+                id: true, planDegreeId: true, requirementId: true,
+                status: true, progress: true, isManualOverride: true,
+                requirement: { select: { id: true, parentId: true, logicType: true } },
+              },
+            },
+          },
         },
         courses: {
-          include: {
-            course: true,
-          },
-          orderBy: {
+          select: {
+            id: true, planId: true, courseId: true, term: true,
+            status: true, gradeLabel: true, gradeNumeric: true,
+            displayOrder: true, dismissedWarnings: true,
             course: {
-              code: 'asc',
-            }
-          }
+              select: {
+                id: true, code: true, number: true, name: true,
+                description: true, units: true,
+              },
+            },
+          },
+          orderBy: { course: { code: 'asc' } },
         },
       },
     });
@@ -97,28 +101,32 @@ export async function GET(
             degree: {
               include: {
                 program: {
-                  include: {
-                    faculties: true,
-                  }
-                }
-              }
+                  include: { faculties: true },
+                },
+              },
             },
             requirementCache: {
-              include: {
-                requirement: true,
-              }
-            }
-          }
+              select: {
+                id: true, planDegreeId: true, requirementId: true,
+                status: true, progress: true, isManualOverride: true,
+                requirement: { select: { id: true, parentId: true, logicType: true } },
+              },
+            },
+          },
         },
         courses: {
-          include: {
-            course: true,
-          },
-          orderBy: {
+          select: {
+            id: true, planId: true, courseId: true, term: true,
+            status: true, gradeLabel: true, gradeNumeric: true,
+            displayOrder: true, dismissedWarnings: true,
             course: {
-              code: 'asc',
-            }
-          }
+              select: {
+                id: true, code: true, number: true, name: true,
+                description: true, units: true,
+              },
+            },
+          },
+          orderBy: { course: { code: 'asc' } },
         },
       },
     });
@@ -382,27 +390,20 @@ export async function POST(
       },
       include: {
         degrees: {
-          include: {
-            degree: {
-              include: {
-                program: {
-                  include: {
-                    faculties: true,
-                  }
-                }
-              }
-            },
+          select: {
+            degreeId: true,
             requirementCache: {
-              include: {
-                requirement: true,
-              }
-            }
-          }
+              select: {
+                requirementId: true, status: true, progress: true,
+              },
+            },
+          },
         },
         courses: {
-          include: {
-            course: true,
-          }
+          select: {
+            courseId: true, term: true, status: true,
+            gradeLabel: true, gradeNumeric: true, displayOrder: true,
+          },
         },
       },
     });
@@ -489,28 +490,32 @@ export async function POST(
             degree: {
               include: {
                 program: {
-                  include: {
-                    faculties: true,
-                  }
-                }
-              }
+                  include: { faculties: true },
+                },
+              },
             },
             requirementCache: {
-              include: {
-                requirement: true,
-              }
-            }
-          }
+              select: {
+                id: true, planDegreeId: true, requirementId: true,
+                status: true, progress: true, isManualOverride: true,
+                requirement: { select: { id: true, parentId: true, logicType: true } },
+              },
+            },
+          },
         },
         courses: {
-          include: {
-            course: true,
-          },
-          orderBy: {
+          select: {
+            id: true, planId: true, courseId: true, term: true,
+            status: true, gradeLabel: true, gradeNumeric: true,
+            displayOrder: true, dismissedWarnings: true,
             course: {
-              code: 'asc',
-            }
-          }
+              select: {
+                id: true, code: true, number: true, name: true,
+                description: true, units: true,
+              },
+            },
+          },
+          orderBy: { course: { code: 'asc' } },
         },
       },
     });

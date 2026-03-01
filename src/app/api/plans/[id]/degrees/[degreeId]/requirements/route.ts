@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { loadFullTree, updateAllRequirementsForPlanDegree } from '@/lib/requirement-utils';
+import { loadFullTree, loadFullTrees, updateAllRequirementsForPlanDegree } from '@/lib/requirement-utils';
 
 // GET /api/plans/[id]/degrees/[degreeId]/requirements - Get requirements for a plan degree
 export async function GET(
@@ -74,30 +74,33 @@ export async function GET(
     });
     const cacheMap = new Map(cache.map(c => [c.requirementId, c]));
 
-    // Build sections with full requirement trees and merged cache
-    const sections = await Promise.all(
-      planDegree.degree.sections.map(async (section) => {
-        let requirementRoot = null;
+    // Batch-load all section trees in a single query
+    const rootIds = planDegree.degree.sections
+      .filter(s => s.requirementRootId)
+      .map(s => s.requirementRootId!);
+    const treeMap = await loadFullTrees(prisma, rootIds);
 
-        if (section.requirementRootId) {
-          requirementRoot = await loadFullTree(prisma, section.requirementRootId);
+    // Build sections with merged cache
+    const sections = planDegree.degree.sections.map((section) => {
+      let requirementRoot = null;
 
-          // Merge cache status/progress into tree nodes
-          if (requirementRoot) {
-            mergeCache(requirementRoot, cacheMap);
-          }
+      if (section.requirementRootId) {
+        requirementRoot = treeMap.get(section.requirementRootId) || null;
+
+        if (requirementRoot) {
+          mergeCache(requirementRoot, cacheMap);
         }
+      }
 
-        return {
-          id: section.id,
-          degreeId: section.degreeId,
-          label: section.label,
-          displayOrder: section.displayOrder,
-          requirementRootId: section.requirementRootId,
-          requirementRoot,
-        };
-      })
-    );
+      return {
+        id: section.id,
+        degreeId: section.degreeId,
+        label: section.label,
+        displayOrder: section.displayOrder,
+        requirementRootId: section.requirementRootId,
+        requirementRoot,
+      };
+    });
 
     // Filter out purely informational TEXT_RULE sections (leaf with no children),
     // but keep parent-constraint TEXT_RULEs whose label prefixes another section
@@ -201,25 +204,29 @@ export async function PUT(
     });
     const cacheMap = new Map(cache.map(c => [c.requirementId, c]));
 
-    const sections = await Promise.all(
-      degree.sections.map(async (section) => {
-        let requirementRoot = null;
-        if (section.requirementRootId) {
-          requirementRoot = await loadFullTree(prisma, section.requirementRootId);
-          if (requirementRoot) {
-            mergeCache(requirementRoot, cacheMap);
-          }
+    // Batch-load all section trees in a single query
+    const putRootIds = degree.sections
+      .filter(s => s.requirementRootId)
+      .map(s => s.requirementRootId!);
+    const putTreeMap = await loadFullTrees(prisma, putRootIds);
+
+    const sections = degree.sections.map((section) => {
+      let requirementRoot = null;
+      if (section.requirementRootId) {
+        requirementRoot = putTreeMap.get(section.requirementRootId) || null;
+        if (requirementRoot) {
+          mergeCache(requirementRoot, cacheMap);
         }
-        return {
-          id: section.id,
-          degreeId: section.degreeId,
-          label: section.label,
-          displayOrder: section.displayOrder,
-          requirementRootId: section.requirementRootId,
-          requirementRoot,
-        };
-      })
-    );
+      }
+      return {
+        id: section.id,
+        degreeId: section.degreeId,
+        label: section.label,
+        displayOrder: section.displayOrder,
+        requirementRootId: section.requirementRootId,
+        requirementRoot,
+      };
+    });
 
     // Filter out purely informational TEXT_RULE sections (leaf with no children),
     // but keep parent-constraint TEXT_RULEs whose label prefixes another section

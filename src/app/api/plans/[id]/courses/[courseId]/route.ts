@@ -83,7 +83,7 @@ export async function PUT(
       },
     });
 
-    // Fire-and-forget: update requirement cache in background
+    // Update requirement cache in background (bulk SQL makes this fast)
     updateAllRequirementsForPlan(prisma, id).catch(error =>
       console.error('Error updating requirements:', error)
     );
@@ -164,7 +164,7 @@ export async function DELETE(
       },
     });
 
-    // Fire-and-forget: update requirement cache in background
+    // Update requirement cache in background (bulk SQL makes this fast)
     updateAllRequirementsForPlan(prisma, id).catch(error =>
       console.error('Error updating requirements:', error)
     );

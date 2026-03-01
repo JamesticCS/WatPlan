@@ -4,7 +4,9 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { updateAllRequirementsForPlan } from '@/lib/requirement-utils';
 
-// POST /api/plans/[id]/courses - Add a course to a plan
+// POST /api/plans/[id]/courses - Add course(s) to a plan
+// Supports single course: { courseId, term?, status?, ... }
+// Supports batch: { courses: [{ courseId, term?, status?, ... }, ...] }
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -47,61 +49,76 @@ export async function POST(
 
     const body = await request.json();
 
-    if (!body.courseId) {
+    // Support batch: { courses: [...] } or single: { courseId: ... }
+    const isBatch = Array.isArray(body.courses);
+    const courseInputs: Array<{
+      courseId: string;
+      term?: string;
+      status?: string;
+      gradeLabel?: string;
+      gradeNumeric?: number;
+      displayOrder?: number;
+    }> = isBatch ? body.courses : [body];
+
+    if (courseInputs.length === 0 || !courseInputs[0].courseId) {
       return NextResponse.json(
         { error: 'Course ID is required' },
         { status: 400 }
       );
     }
 
-    const course = await prisma.course.findUnique({
-      where: { id: body.courseId },
+    // Check which courses already exist in plan (batch lookup)
+    const courseIds = courseInputs.map(c => c.courseId);
+    const existing = await prisma.planCourse.findMany({
+      where: { planId: id, courseId: { in: courseIds } },
+      select: { courseId: true },
     });
+    const existingSet = new Set(existing.map(e => e.courseId));
 
-    if (!course) {
-      return NextResponse.json(
-        { error: 'Course not found' },
-        { status: 404 }
-      );
-    }
+    // Filter to only new courses
+    const newCourses = courseInputs.filter(c => !existingSet.has(c.courseId));
+    const alreadyInPlan = courseInputs.length - newCourses.length;
 
-    const existingPlanCourse = await prisma.planCourse.findUnique({
-      where: {
-        planId_courseId: {
+    if (newCourses.length > 0) {
+      // Batch create all new courses in one query
+      await prisma.planCourse.createMany({
+        data: newCourses.map(c => ({
           planId: id,
-          courseId: body.courseId,
-        },
-      },
-    });
+          courseId: c.courseId,
+          term: c.term || 'BACKLOG',
+          status: (c.status as any) || 'PLANNED',
+          gradeLabel: c.gradeLabel || null,
+          gradeNumeric: c.gradeNumeric != null ? c.gradeNumeric : null,
+          displayOrder: c.displayOrder || 0,
+        })),
+      });
 
-    if (existingPlanCourse) {
-      return NextResponse.json(
-        { error: 'Course already in plan' },
-        { status: 400 }
+      // Update requirement cache in background (bulk SQL makes this fast)
+      updateAllRequirementsForPlan(prisma, id).catch(error =>
+        console.error('Error updating requirements after adding course:', error)
       );
     }
 
-    const planCourse = await prisma.planCourse.create({
-      data: {
-        planId: id,
-        courseId: body.courseId,
-        term: body.term || 'BACKLOG',
-        status: (body.status as any) || 'PLANNED',
-        gradeLabel: body.gradeLabel || null,
-        gradeNumeric: body.gradeNumeric != null ? body.gradeNumeric : null,
-        displayOrder: body.displayOrder || 0,
-      },
-      include: {
-        course: true,
-      },
-    });
+    // For single course backward compat, fetch and return the created course
+    if (!isBatch) {
+      if (existingSet.has(body.courseId)) {
+        return NextResponse.json(
+          { error: 'Course already in plan' },
+          { status: 400 }
+        );
+      }
+      const planCourse = await prisma.planCourse.findUnique({
+        where: { planId_courseId: { planId: id, courseId: body.courseId } },
+        include: { course: true },
+      });
+      return NextResponse.json({ planCourse }, { status: 201 });
+    }
 
-    // Fire-and-forget: update requirement cache in background
-    updateAllRequirementsForPlan(prisma, id).catch(error =>
-      console.error('Error updating requirements after adding course:', error)
-    );
-
-    return NextResponse.json({ planCourse }, { status: 201 });
+    // Batch response
+    return NextResponse.json({
+      added: newCourses.length,
+      alreadyInPlan,
+    }, { status: 201 });
   } catch (error) {
     console.error('Error adding course to plan:', error);
     return NextResponse.json(

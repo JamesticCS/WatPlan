@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export interface EvalResult {
 
 // ─── Tree Loading ──────────────────────────────────────────────────────────
 
-const toNode = (r: any): RequirementNode => ({
+export const toNode = (r: any): RequirementNode => ({
   id: r.id,
   parentId: r.parentId ?? r.parentid ?? null,
   logicType: r.logicType ?? r.logictype,
@@ -62,16 +62,18 @@ const toNode = (r: any): RequirementNode => ({
 });
 
 /**
- * Load a full requirement tree from a root node using a single recursive CTE query.
+ * Load multiple requirement trees in a single recursive CTE query.
+ * Returns a Map from rootId to RequirementNode.
  */
-export async function loadFullTree(
+export async function loadFullTrees(
   prisma: PrismaClient,
-  rootId: string
-): Promise<RequirementNode | null> {
-  // Single recursive CTE to load the entire tree in one query
+  rootIds: string[]
+): Promise<Map<string, RequirementNode>> {
+  if (rootIds.length === 0) return new Map();
+
   const rows: any[] = await prisma.$queryRaw`
     WITH RECURSIVE tree AS (
-      SELECT * FROM "Requirement" WHERE id = ${rootId}
+      SELECT * FROM "Requirement" WHERE id = ANY(${rootIds})
       UNION ALL
       SELECT r.* FROM "Requirement" r
       INNER JOIN tree t ON r."parentId" = t.id
@@ -79,7 +81,7 @@ export async function loadFullTree(
     SELECT * FROM tree
   `;
 
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return new Map();
 
   // Build flat map
   const allNodes = new Map<string, RequirementNode>();
@@ -87,7 +89,7 @@ export async function loadFullTree(
     allNodes.set(row.id, toNode(row));
   }
 
-  // Build tree structure
+  // Build tree structures
   for (const node of allNodes.values()) {
     if (node.parentId && allNodes.has(node.parentId)) {
       allNodes.get(node.parentId)!.children.push(node);
@@ -99,7 +101,25 @@ export async function loadFullTree(
     node.children.sort((a, b) => a.displayOrder - b.displayOrder);
   }
 
-  return allNodes.get(rootId) || null;
+  // Extract root trees
+  const result = new Map<string, RequirementNode>();
+  for (const rootId of rootIds) {
+    const root = allNodes.get(rootId);
+    if (root) result.set(rootId, root);
+  }
+
+  return result;
+}
+
+/**
+ * Load a full requirement tree from a root node. Delegates to loadFullTrees.
+ */
+export async function loadFullTree(
+  prisma: PrismaClient,
+  rootId: string
+): Promise<RequirementNode | null> {
+  const trees = await loadFullTrees(prisma, [rootId]);
+  return trees.get(rootId) || null;
 }
 
 // ─── Evaluation ────────────────────────────────────────────────────────────
@@ -268,10 +288,16 @@ async function loadPlanCoursesForEval(
 ): Promise<PlanCourseForEval[]> {
   const planCourses = await prisma.planCourse.findMany({
     where: { planId },
-    include: {
+    select: {
+      courseId: true,
+      status: true,
+      gradeNumeric: true,
       course: {
-        include: {
-          subjectRef: true,
+        select: {
+          code: true,
+          number: true,
+          units: true,
+          subjectRef: { select: { code: true } },
         },
       },
     },
@@ -286,6 +312,33 @@ async function loadPlanCoursesForEval(
     gradeNumeric: pc.gradeNumeric,
     units: pc.course.units,
   }));
+}
+
+// ─── Bulk Upsert ─────────────────────────────────────────────────────────
+
+/**
+ * Upsert requirement cache entries using a single INSERT ... ON CONFLICT statement.
+ * This replaces the previous approach of N individual upserts in a transaction,
+ * which was extremely slow over a remote database connection (~200 round trips).
+ */
+async function bulkUpsertCache(
+  prisma: PrismaClient,
+  planDegreeId: string,
+  entries: Array<[string, EvalResult]>
+): Promise<void> {
+  if (entries.length === 0) return;
+
+  const values = entries.map(([requirementId, result]) =>
+    Prisma.sql`(gen_random_uuid()::text, ${planDegreeId}, ${requirementId}, ${result.status}::"RequirementStatus", ${result.progress}::double precision, false, NOW())`
+  );
+
+  await prisma.$executeRaw`
+    INSERT INTO "PlanRequirementCache" ("id", "planDegreeId", "requirementId", "status", "progress", "isManualOverride", "updatedAt")
+    VALUES ${Prisma.join(values)}
+    ON CONFLICT ("planDegreeId", "requirementId")
+    DO UPDATE SET "status" = EXCLUDED."status", "progress" = EXCLUDED."progress", "updatedAt" = NOW()
+    WHERE "PlanRequirementCache"."isManualOverride" = false
+  `;
 }
 
 // ─── Manual Override Loading ──────────────────────────────────────────────
@@ -323,10 +376,13 @@ export async function updateAllRequirementsForPlanDegree(
   // Load plan degree with its degree's sections
   const planDegree = await prisma.planDegree.findUnique({
     where: { id: planDegreeId },
-    include: {
+    select: {
+      id: true,
       degree: {
-        include: {
-          sections: true,
+        select: {
+          sections: {
+            select: { id: true, requirementRootId: true },
+          },
         },
       },
     },
@@ -340,48 +396,25 @@ export async function updateAllRequirementsForPlanDegree(
     loadManualOverrides(prisma, planDegreeId),
   ]);
 
-  // Load all section trees in parallel
+  // Load all section trees in a single batch query
   const sectionsWithRoots = planDegree.degree.sections.filter(s => s.requirementRootId);
-  const trees = await Promise.all(
-    sectionsWithRoots.map(s => loadFullTree(prisma, s.requirementRootId!))
-  );
+  const rootIds = sectionsWithRoots.map(s => s.requirementRootId!);
+  const treeMap = await loadFullTrees(prisma, rootIds);
 
   // Evaluate all trees (respecting manual overrides)
   const allResults = new Map<string, EvalResult>();
-  for (const tree of trees) {
+  for (const rootId of rootIds) {
+    const tree = treeMap.get(rootId);
     if (!tree) continue;
     collectNodeResults(tree, planCourses, allResults, manualOverrides);
   }
 
-  // Batch upsert — skip manually-overridden entries
+  // Bulk upsert — skip manually-overridden entries
   const toUpsert = Array.from(allResults.entries()).filter(
     ([reqId]) => !manualOverrides.has(reqId)
   );
 
-  if (toUpsert.length > 0) {
-    await prisma.$transaction(
-      toUpsert.map(([requirementId, result]) =>
-        prisma.planRequirementCache.upsert({
-          where: {
-            planDegreeId_requirementId: {
-              planDegreeId,
-              requirementId,
-            },
-          },
-          update: {
-            status: result.status,
-            progress: result.progress,
-          },
-          create: {
-            planDegreeId,
-            requirementId,
-            status: result.status,
-            progress: result.progress,
-          },
-        })
-      )
-    );
-  }
+  await bulkUpsertCache(prisma, planDegreeId, toUpsert);
 }
 
 /**
@@ -395,10 +428,13 @@ export async function updateAllRequirementsForPlan(
   // Load plan degrees with their sections
   const planDegrees = await prisma.planDegree.findMany({
     where: { planId },
-    include: {
+    select: {
+      id: true,
       degree: {
-        include: {
-          sections: true,
+        select: {
+          sections: {
+            select: { id: true, requirementRootId: true },
+          },
         },
       },
     },
@@ -409,54 +445,36 @@ export async function updateAllRequirementsForPlan(
   // Load plan courses once, shared across all degrees
   const planCourses = await loadPlanCoursesForEval(prisma, planId);
 
-  // Process all degrees in parallel
+  // Collect ALL root IDs across all degrees, load in one query
+  const allRootIds: string[] = [];
+  for (const pd of planDegrees) {
+    for (const section of pd.degree.sections) {
+      if (section.requirementRootId) {
+        allRootIds.push(section.requirementRootId);
+      }
+    }
+  }
+  const allTrees = await loadFullTrees(prisma, allRootIds);
+
+  // Process all degrees in parallel (trees already loaded, only DB calls are overrides + upserts)
   await Promise.all(
     planDegrees.map(async (pd) => {
-      // Load manual overrides for this degree
       const manualOverrides = await loadManualOverrides(prisma, pd.id);
 
-      // Load all section trees in parallel
-      const sectionsWithRoots = pd.degree.sections.filter(s => s.requirementRootId);
-      const trees = await Promise.all(
-        sectionsWithRoots.map(s => loadFullTree(prisma, s.requirementRootId!))
-      );
-
-      // Evaluate all trees (respecting manual overrides)
       const allResults = new Map<string, EvalResult>();
-      for (const tree of trees) {
+      for (const section of pd.degree.sections) {
+        if (!section.requirementRootId) continue;
+        const tree = allTrees.get(section.requirementRootId);
         if (!tree) continue;
         collectNodeResults(tree, planCourses, allResults, manualOverrides);
       }
 
-      // Batch upsert — skip manually-overridden entries
+      // Bulk upsert — skip manually-overridden entries
       const toUpsert = Array.from(allResults.entries()).filter(
         ([reqId]) => !manualOverrides.has(reqId)
       );
 
-      if (toUpsert.length > 0) {
-        await prisma.$transaction(
-          toUpsert.map(([requirementId, result]) =>
-            prisma.planRequirementCache.upsert({
-              where: {
-                planDegreeId_requirementId: {
-                  planDegreeId: pd.id,
-                  requirementId,
-                },
-              },
-              update: {
-                status: result.status,
-                progress: result.progress,
-              },
-              create: {
-                planDegreeId: pd.id,
-                requirementId,
-                status: result.status,
-                progress: result.progress,
-              },
-            })
-          )
-        );
-      }
+      await bulkUpsertCache(prisma, pd.id, toUpsert);
     })
   );
 }

@@ -49,11 +49,18 @@ export async function ensureFacultyRequirements(
   // Load all plan degrees with program + faculty info
   const planDegrees = await prisma.planDegree.findMany({
     where: { planId },
-    include: {
+    select: {
+      id: true,
+      degreeId: true,
       degree: {
-        include: {
+        select: {
+          name: true,
+          credentialCategory: true,
           program: {
-            include: { faculties: true },
+            select: {
+              name: true,
+              faculties: { select: { name: true } },
+            },
           },
         },
       },

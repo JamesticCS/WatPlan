@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { RequirementNode, PlanCourseForEval, EvalResult, evaluateNode } from './requirement-utils';
+import { RequirementNode, PlanCourseForEval, EvalResult, evaluateNode, loadFullTrees } from './requirement-utils';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -20,27 +20,6 @@ export interface CourseWarning {
 
 // ─── Batch Tree Loading ─────────────────────────────────────────────────────
 
-const toNode = (r: any): RequirementNode => ({
-  id: r.id,
-  parentId: r.parentId ?? r.parentid ?? null,
-  logicType: r.logicType ?? r.logictype,
-  label: r.label,
-  n: r.n,
-  courseId: r.courseId ?? r.courseid ?? null,
-  courseCode: r.courseCode ?? r.coursecode ?? null,
-  minGradeRequired: r.minGradeRequired ?? r.mingraderequired ?? null,
-  unitsRequired: r.unitsRequired != null ? Number(r.unitsRequired) : (r.unitsrequired != null ? Number(r.unitsrequired) : null),
-  subjectRestriction: r.subjectRestriction ?? r.subjectrestriction ?? null,
-  levelRestriction: r.levelRestriction ?? r.levelrestriction ?? null,
-  minAverage: r.minAverage ?? r.minaverage ?? null,
-  maxFailures: r.maxFailures ?? r.maxfailures ?? null,
-  failureRestriction: r.failureRestriction ?? r.failurerestriction ?? null,
-  concentrationType: r.concentrationType ?? r.concentrationtype ?? null,
-  text: r.text,
-  displayOrder: r.displayOrder ?? r.displayorder ?? 0,
-  children: [],
-});
-
 /**
  * Load all prerequisite and corequisite trees for a set of courses in one query.
  */
@@ -51,10 +30,9 @@ async function loadAllRequisiteTrees(
   prereqTrees: Map<string, RequirementNode>;
   coreqTrees: Map<string, RequirementNode>;
 }> {
-  // Collect all root IDs
-  const rootIds: string[] = [];
-  const rootToCoursePrereq = new Map<string, string>(); // rootId -> courseId
+  const rootToCoursePrereq = new Map<string, string>();
   const rootToCourseCoreq = new Map<string, string>();
+  const rootIds: string[] = [];
 
   for (const c of courses) {
     if (c.prerequisiteRootId) {
@@ -70,46 +48,18 @@ async function loadAllRequisiteTrees(
   const prereqTrees = new Map<string, RequirementNode>();
   const coreqTrees = new Map<string, RequirementNode>();
 
-  if (rootIds.length === 0) {
-    return { prereqTrees, coreqTrees };
-  }
+  if (rootIds.length === 0) return { prereqTrees, coreqTrees };
 
-  // Single recursive CTE loading ALL trees at once
-  const rows: any[] = await prisma.$queryRaw`
-    WITH RECURSIVE tree AS (
-      SELECT * FROM "Requirement" WHERE id = ANY(${rootIds})
-      UNION ALL
-      SELECT r.* FROM "Requirement" r
-      INNER JOIN tree t ON r."parentId" = t.id
-    )
-    SELECT * FROM tree
-  `;
-
-  // Build flat map
-  const allNodes = new Map<string, RequirementNode>();
-  for (const row of rows) {
-    allNodes.set(row.id, toNode(row));
-  }
-
-  // Build tree structures
-  for (const node of allNodes.values()) {
-    if (node.parentId && allNodes.has(node.parentId)) {
-      allNodes.get(node.parentId)!.children.push(node);
-    }
-  }
-
-  // Sort children
-  for (const node of allNodes.values()) {
-    node.children.sort((a, b) => a.displayOrder - b.displayOrder);
-  }
+  // Use shared batch loader
+  const allTrees = await loadFullTrees(prisma, rootIds);
 
   // Map root nodes to course IDs
   for (const [rootId, courseId] of rootToCoursePrereq) {
-    const tree = allNodes.get(rootId);
+    const tree = allTrees.get(rootId);
     if (tree) prereqTrees.set(courseId, tree);
   }
   for (const [rootId, courseId] of rootToCourseCoreq) {
-    const tree = allNodes.get(rootId);
+    const tree = allTrees.get(rootId);
     if (tree) coreqTrees.set(courseId, tree);
   }
 
