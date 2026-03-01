@@ -153,7 +153,7 @@ export default function Home() {
                   </div>
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-amber-100">Add Courses</h3>
                   <p className="text-gray-600 dark:text-amber-100/70 flex-1">
-                    Browse our comprehensive course catalog and add courses you've taken or plan to take. Organize them by term to visualize your journey.
+                    Search through UWaterloo courses and add ones you've taken or plan to take. Organize them by term to map out your degree.
                   </p>
                 </div>
               </Card>
