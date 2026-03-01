@@ -35,15 +35,20 @@ export function Navbar() {
               </Link>
             )}
             
-            {/* Sign in/out button */}
+            {/* User info and sign out */}
             {session ? (
-              <Button 
-                variant="default" 
-                onClick={() => signOut()}
-                className="bg-primary text-black hover:bg-primary/90 dark:hover:bg-primary/80 font-medium transition-all shadow-md hover:shadow-primary/20 ml-2"
-              >
-                Sign Out
-              </Button>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-muted-foreground hidden sm:inline truncate max-w-[200px]">
+                  {session.user?.email?.endsWith('@watplan.temp') ? session.user?.name || 'Guest' : session.user?.email}
+                </span>
+                <Button
+                  variant="default"
+                  onClick={() => signOut()}
+                  className="bg-primary text-black hover:bg-primary/90 dark:hover:bg-primary/80 font-medium transition-all shadow-md hover:shadow-primary/20"
+                >
+                  Sign Out
+                </Button>
+              </div>
             ) : (
               <Button 
                 variant="default" 

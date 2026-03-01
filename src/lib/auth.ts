@@ -130,19 +130,11 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async redirect({ url, baseUrl }) {
-      // Allow error and auth-related redirects to pass through
-      if (url.includes('/auth/error') || url.includes('/auth/signin')) {
+      // Allow error page redirects to pass through
+      if (url.startsWith(`${baseUrl}/auth/error`)) {
         return url;
       }
-      // For relative URLs, prefix with baseUrl
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`;
-      }
-      // For same-origin URLs, allow them
-      if (url.startsWith(baseUrl)) {
-        return url;
-      }
-      // Default: go to plans
+      // Everything else goes to /plans
       return `${baseUrl}/plans`;
     }
   },
