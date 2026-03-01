@@ -112,7 +112,6 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async session({ session, user, token }) {
-      // Keep this simple for now - just add the user ID and guest status to the session
       if (session.user) {
         if (user) {
           session.user.id = user.id;
@@ -124,34 +123,26 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user, account }) {
-      // Enhanced debugging for auth issues
-      if (process.env.NODE_ENV === 'development') {
-        if (account) {
-          authLogger.log(`JWT callback - Account provider: ${account.provider}`);
-          authLogger.log(`JWT callback - Account type: ${account.type}`);
-        }
-        if (user) {
-          authLogger.log(`JWT callback - User ID: ${user.id}`);
-          authLogger.log(`JWT callback - User email: ${user.email}`);
-        }
-      }
-      
-      // Just preserve the user's guest status in the token
+    async jwt({ token, user }) {
       if (user) {
         token.isGuest = user.isGuest || false;
       }
       return token;
     },
     async redirect({ url, baseUrl }) {
-      // Log redirect for debugging
-      if (process.env.NODE_ENV === 'development') {
-        authLogger.log(`Redirect callback - URL: ${url}`);
-        authLogger.log(`Redirect callback - Base URL: ${baseUrl}`);
-        authLogger.log(`Redirect callback - Final URL: ${baseUrl}/plans`);
+      // Allow error and auth-related redirects to pass through
+      if (url.includes('/auth/error') || url.includes('/auth/signin')) {
+        return url;
       }
-      
-      // Always redirect to /plans for simplicity
+      // For relative URLs, prefix with baseUrl
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`;
+      }
+      // For same-origin URLs, allow them
+      if (url.startsWith(baseUrl)) {
+        return url;
+      }
+      // Default: go to plans
       return `${baseUrl}/plans`;
     }
   },
@@ -161,6 +152,13 @@ export const authOptions: NextAuthOptions = {
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
-  // Disable automatic session loading on initial page load
+  logger: {
+    error(code, metadata) {
+      console.error(`[NextAuth Error] ${code}`, metadata);
+    },
+    warn(code) {
+      console.warn(`[NextAuth Warning] ${code}`);
+    },
+  },
   useSecureCookies: process.env.NODE_ENV === "production",
 };
